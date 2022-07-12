@@ -578,11 +578,6 @@ jobs:
           path: testartifacts-${{ env.MATRIX }}/
           retention-days: 7
       -
-        name: Cleanup test artifacts
-        if: always()
-        run:
-          rm -rf testartifacts-${{ env.MATRIX }}/
-      -
         name: Cleanup ginkgo JSON report
         # Delete report.json after the analysis. File should always exist.
         # Delete upgrade_report.json. It may not exist depending on test level.
@@ -611,6 +606,35 @@ jobs:
             tests/*/out/
           retention-days: 7
           if-no-files-found: ignore
+
+  summarize-tests:
+    name: Report E2E test summary
+    needs:
+      - duplicate_runs
+      - evaluate-test-level
+      - e2e-local
+    runs-on: ubuntu-20.04
+    steps:
+      -
+        name: Collate test artifacts
+        if: always()
+        run: |
+          set +x
+          echo "dir: $(pwd)"
+          for dr in testartifacts-* ; do
+            echo "listing test artifacts in folder: $dr"
+            ls -l $dr
+          done
+      -
+        name: Cleanup test artifacts
+        if: always()
+        run: |
+          set +x
+          echo "dir: $(pwd)"
+          for dr in testartifacts-* ; do
+            echo "deleting test artifacts in folder: $dr"
+            rm -rf $dr
+          done
 
   ok-to-merge:
     name: Label the PR as "ok to merge"
