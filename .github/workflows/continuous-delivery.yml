@@ -607,13 +607,15 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  summarize-tests:
+  summarize-e2e-tests:
     name: Report E2E test summary
     needs:
       - duplicate_runs
       - evaluate-test-level
       - e2e-local
-    if: always()
+    if: always() &&
+      needs.duplicate_runs.outputs.should_skip != 'true' &&
+      needs.evaluate-test-level.result == 'success'
     runs-on: ubuntu-20.04
     steps:
       -
