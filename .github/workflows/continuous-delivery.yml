@@ -613,11 +613,11 @@ jobs:
       - duplicate_runs
       - evaluate-test-level
       - e2e-local
+    if: always()
     runs-on: ubuntu-20.04
     steps:
       -
         name: Collate test artifacts
-        if: always()
         run: |
           set +x
           echo "dir: $(pwd)"
