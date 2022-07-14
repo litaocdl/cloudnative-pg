@@ -623,23 +623,24 @@ jobs:
       needs.evaluate-test-level.result == 'success'
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+
+      - name: Create a folder for the artifacts
+        run: mkdir test-artifacts
 
       - uses: actions/download-artifact@v3
         with:
           name: testartifacts-local
+          path: test-artifacts
 
       - name: Display structure of downloaded files
         run: ls -R
 
-        # name: Collate test artifacts
-        # run: |
-        #   set +x
-        #   echo "dir: $(pwd)"
-        #   for dr in testartifacts-* ; do
-        #     echo "listing test artifacts in folder: $dr"
-        #     ls -l $dr
-        #   done
+      - name: Compute number of hits per test
+        run: |
+          set +x
+          echo ''
+          python .github/summarize-test-results.py --dir test-artifacts
 
   ok-to-merge:
     name: Label the PR as "ok to merge"
