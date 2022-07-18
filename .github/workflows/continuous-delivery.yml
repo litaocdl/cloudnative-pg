@@ -639,8 +639,8 @@ jobs:
       - name: Compute number of hits per test
         run: |
           set +x
-          echo ''
-          python .github/summarize-test-results.py --dir test-artifacts
+          echo 'computing stuff'
+          echo $(python .github/summarize-test-results.py --dir test-artifacts) >> $GITHUB_STEP_SUMMARY
 
   ok-to-merge:
     name: Label the PR as "ok to merge"

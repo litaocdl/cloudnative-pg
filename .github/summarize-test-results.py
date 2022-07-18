@@ -77,4 +77,13 @@ if __name__ == "__main__":
                 hits_by_test[name] = 0
             hits_by_test[name] = 1 + hits_by_test[name]
     
-    print(hits_by_test)
+    # print(hits_by_test)
+    md = """
+    # E2E Test summary
+
+    | tests | run | failed |
+    |---|--|--|
+    | upgrade | 10 | 7 |
+
+    """
+    print(md)
