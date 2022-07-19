@@ -61,14 +61,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    print("artifacts directory: ")
-    print(args.dir)
+    # print("artifacts directory: ")
+    # print(args.dir)
 
     hits_by_test = {}
 
     dir_listing = os.listdir(args.dir)
     for f in dir_listing:
-        print("parsing file:", f)
         path = os.path.join(args.dir, f)
         with open(path) as json_file:
             testResults = json.load(json_file)
