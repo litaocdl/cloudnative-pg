@@ -641,6 +641,8 @@ jobs:
           set +x
           echo 'computing stuff'
           echo $(python .github/summarize-test-results.py --dir test-artifacts) >> $GITHUB_STEP_SUMMARY
+      - name: Summary
+        run: echo '### Hello world! :rocket:' >> $GITHUB_STEP_SUMMARY
 
   ok-to-merge:
     name: Label the PR as "ok to merge"
