@@ -157,7 +157,7 @@ jobs:
       uses: ludeeus/action-shellcheck@1.1.0
 
   tests:
-    name: Run unit tests
+    name: Run unit tests matrix
     needs:
       - duplicate_runs
       - change-triage
