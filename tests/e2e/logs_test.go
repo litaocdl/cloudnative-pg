@@ -78,7 +78,7 @@ var _ = Describe("JSON log output", func() {
 				Expect(isPgControlDataLoggerFound).To(BeTrue(),
 					fmt.Sprintf("pg_controldata logger not found in pod %v logs", pod.GetName()))
 				isPostgresLoggerFound := testsUtils.HasLogger(logEntries, "postgres")
-				Expect(isPostgresLoggerFound).To(BeTrue(),
+				Expect(isPostgresLoggerFound).To(BeFalse(),
 					fmt.Sprintf("postgres logger not found in pod %v logs", pod.GetName()))
 			}
 		})

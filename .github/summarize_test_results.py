@@ -310,7 +310,7 @@ def format_bucket_table(buckets, structure):
 
     for bucket in sorted_by_fail:
         table.add_row(
-            [bucket, buckets["failed"][bucket], buckets["total"][bucket]]
+            [buckets["failed"][bucket], buckets["total"][bucket], bucket]
         )
 
     print(table)
@@ -344,14 +344,14 @@ def format_by_test(summary, structure):
         table.add_row(
             [
                 summary["by_test"]["failed"][bucket],
-                summary["by_test"]["failed"],
+                summary["by_test"]["total"][bucket],
                 failed_k8s,
                 failed_pg,
                 bucket,
             ]
         )
 
-    print()
+    print(table)
 
 
 def format_duration(duration):
@@ -450,6 +450,7 @@ def format_test_summary(summary):
         print(
             "**Index**: [timing table](#user-content-timing) | "
             + "[by test](#user-content-by_test) | "
+            + "[by matrix](#user-content-by_matrix) | "
             + "[by k8s](#user-content-by_k8s) | "
             + "[by postgres](#user-content-by_postgres) | "
             + "[by platform](#user-content-by_platform)"
