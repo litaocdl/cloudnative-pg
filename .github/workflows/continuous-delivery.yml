@@ -400,7 +400,7 @@ jobs:
         name: Run GoReleaser to build plugin
         uses: goreleaser/goreleaser-action@v3
         if: |
-          github.event_name == 'schedule' || github.event.inputs.build_plugin = 'true'
+          github.event_name == 'schedule' || github.event.inputs.build_plugin == 'true'
         with:
           distribution: goreleaser
           version: latest
