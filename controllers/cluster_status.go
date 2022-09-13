@@ -271,6 +271,7 @@ func (r *ClusterReconciler) updateResourceStatus(
 	cluster.Status.HealthyPVC = pvcClassification.Healthy
 	cluster.Status.InitializingPVC = pvcClassification.Initializing
 	cluster.Status.ResizingPVC = pvcClassification.Resizing
+	cluster.Status.UnusablePVC = pvcClassification.Unusable
 
 	// From now on, we'll consider only Active pods: those Pods
 	// that will possibly work. Let's forget about the failed ones
@@ -517,7 +518,7 @@ func (r *ClusterReconciler) getPgbouncerIntegrationStatus(
 		if err != nil {
 			return apiv1.PgBouncerIntegrationStatus{}, fmt.Errorf("while getting secret for pooler integration")
 		}
-		if owner, ok := isOwnedByCluster(&authQuerySecret); ok && owner == cluster.Name {
+		if owner, ok := IsOwnedByCluster(&authQuerySecret); ok && owner == cluster.Name {
 			poolersIntegrations.Secrets = append(poolersIntegrations.Secrets, secretName)
 			continue
 		}

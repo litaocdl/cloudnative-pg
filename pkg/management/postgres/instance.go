@@ -26,7 +26,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/blang/semver"
@@ -37,11 +36,15 @@ import (
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/fileutils"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/execlog"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/log"
+	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/postgres/compatibility"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/postgres/logpipe"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/postgres/pool"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/postgres/utils"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/postgres"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/specs"
+
+	// this is needed to correctly open the sql connection with the pgx driver
+	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
 const (
@@ -152,7 +155,7 @@ type Instance struct {
 	instanceCommandChan chan InstanceCommand
 
 	// InstanceManagerIsUpgrading tells if there is an instance manager upgrade in process
-	InstanceManagerIsUpgrading bool
+	InstanceManagerIsUpgrading atomic.Bool
 
 	// PgRewindIsRunning tells if there is a `pg_rewind` process running
 	PgRewindIsRunning bool
@@ -395,7 +398,7 @@ func (instance *Instance) Reload() error {
 
 // Run this instance returning an OS process needed
 // to control the instance execution
-func (instance Instance) Run() (*execlog.StreamingCmd, error) {
+func (instance *Instance) Run() (*execlog.StreamingCmd, error) {
 	process, err := instance.CheckForExistingPostmaster(postgresName)
 	if err != nil {
 		return nil, err
@@ -425,9 +428,8 @@ func (instance Instance) Run() (*execlog.StreamingCmd, error) {
 
 	postgresCmd := exec.Command(postgresName, options...) // #nosec
 	postgresCmd.Env = instance.Env
-	postgresCmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
+	compatibility.AddInstanceRunCommands(postgresCmd)
+
 	streamingCmd, err := execlog.RunStreamingNoWait(postgresCmd, postgresName)
 	if err != nil {
 		return nil, err
@@ -438,7 +440,7 @@ func (instance Instance) Run() (*execlog.StreamingCmd, error) {
 
 // WithActiveInstance execute the internal function while this
 // PostgreSQL instance is running
-func (instance Instance) WithActiveInstance(inner func() error) error {
+func (instance *Instance) WithActiveInstance(inner func() error) error {
 	// Start the CSV logpipe to redirect log to stdout
 	ctx, ctxCancel := context.WithCancel(context.Background())
 	csvPipe := logpipe.NewLogPipe()
@@ -558,7 +560,7 @@ func (instance *Instance) WaitForPrimaryAvailable() error {
 	log.Info("Waiting for the new primary to be available",
 		"primaryConnInfo", primaryConnInfo)
 
-	db, err := sql.Open("postgres", primaryConnInfo)
+	db, err := sql.Open("pgx", primaryConnInfo)
 	if err != nil {
 		return err
 	}
