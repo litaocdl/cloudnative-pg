@@ -24,6 +24,7 @@ on:
       build_plugin:
         type: boolean
         default: false
+        required: false
         description: Include kubectl-cnpg plugin building
   # scheduled
   schedule:
