@@ -395,12 +395,12 @@ jobs:
         run: |
           echo GOPATH=$(go env GOPATH) >> $GITHUB_ENV
           echo PWD=$(pwd) >> $GITHUB_ENV
+          echo ${{ github.event.inputs.build_plugin }}
       -
         name: Run GoReleaser to build plugin
         uses: goreleaser/goreleaser-action@v3
         if: |
-          github.event_name == 'schedule' || 
-          github.event.inputs.build_plugin
+          github.event_name == 'schedule' || github.event.inputs.build_plugin = 'true'
         with:
           distribution: goreleaser
           version: latest
