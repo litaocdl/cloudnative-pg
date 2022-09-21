@@ -1,0 +1,41 @@
+
+name: check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      product_name:
+        required: true
+        default: 'abc'
+        description: 'product name, by default is the repository name'
+      version:
+        required: true
+        default: 'main'
+        description: 'product version, by default is the branch name'
+      phase:
+        required: false
+        default: 'xx'
+        description: 'product phase (xx,xx,PLANNING,PRERELEASE,ARCHIVED,DEPRECATED,)'
+      generate_report:
+        type: boolean
+        required: false
+        default: true
+        description: Generate the scan report
+
+
+jobs:
+  duplicate_runs:
+    runs-on: ubuntu-20.04
+    name: Skip duplicate runs
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v4.0.0
+        with:
+          concurrent_skipping: 'same_content'
+          skip_after_successful_duplicate: 'true'
+          paths_ignore: '["README.md", "docs/**"]'
+          do_not_skip: '["pull_request", "workflow_dispatch", "schedule"]'
