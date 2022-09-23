@@ -1,28 +1,27 @@
 
 name: check
-
 on:
   push:
-  pull_request:
   workflow_dispatch:
     inputs:
-      product_name:
-        required: true
-        default: 'abc'
-        description: 'product name, by default is the repository name'
       version:
         required: true
-        default: 'main'
-        description: 'product version, by default is the branch name'
+        default: 'CI/CD'
+        description: 'product version, by default is CI/CD'
       phase:
         required: false
-        default: 'xx'
-        description: 'product phase (xx,xx,PLANNING,PRERELEASE,ARCHIVED,DEPRECATED,)'
-      generate_report:
+        default: 'DEVELOPMENT'
+        description: 'product phase (DEVELOPMENT,RELEASED,PLANNING,PRERELEASE,ARCHIVED,DEPRECATED,)'
+      generate_risk_report:
         type: boolean
         required: false
         default: true
-        description: Generate the scan report
+        description: Generate the risk report
+      license_report:
+        type: boolean
+        required: false
+        default: true
+        description: Generate the open source license report
 
 
 jobs:
