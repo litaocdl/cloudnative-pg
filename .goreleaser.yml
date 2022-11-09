@@ -74,6 +74,19 @@ archives:
     386: i386
     amd64: x86_64
 
+nfpms:
+  - id: kubectl-cnpg
+    file_name_template: kubectl-cnpg_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}_{{ . }}{{ end }}
+    maintainer: 'fixme'
+    builds:
+      - kubectl-cnpg
+    formats:
+      - rpm
+      - deb
+    replacements:
+      386: i386
+      amd64: x86_64
+
 checksum:
   name_template: '{{ .ProjectName }}-{{ .Version }}-checksums.txt'
 
@@ -93,3 +106,4 @@ krews:
     short_description: 'Manage your CloudNativePG clusters'
     skip_upload: true
     description: 'This plugin provides multiple commands to help you manage your CloudNativePG clusters.'
+

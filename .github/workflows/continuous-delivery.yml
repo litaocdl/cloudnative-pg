@@ -454,6 +454,15 @@ jobs:
           SLACK_USERNAME: cnpg-bot
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
           SLACK_MESSAGE: Building plugin `kubectl-cnpg` failed!
+#      - name: build kubectl-cnpg rpm build
+#        uses: kentik/pkg@v1.0.0-rc8
+#        if: github.event.inputs.build_plugin == 'true'
+#        with:
+#          name: kubectl-cnpg
+#          version: ${{ env.VERSION }}
+#          arch: x86_64
+#          format: rpm
+#          package: package.yaml
       -
         name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3

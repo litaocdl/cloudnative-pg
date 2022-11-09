@@ -1,0 +1,101 @@
+name: build-cnpg-plugin
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        name: Install Go
+      -
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GOLANG_VERSION }}
+      -
+        name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      -
+        name: Build meta
+        id: build-meta
+        run: |
+          images='${{ env.CNPG_IMAGE_NAME }}'
+          tags=''
+          labels=''
+          commit_sha=${{ github.event.pull_request.head.sha || github.sha }}
+          commit_date=$(git log -1 --pretty=format:'%ad' --date short "${commit_sha}" || : )
+          # use git describe to get the nearest tag and use that to build the version (e.g. 1.4.0+dev24 or 1.4.0)
+          commit_version=$(git describe --tags --match 'v*' "${commit_sha}"| sed -e 's/^v//; s/-g[0-9a-f]\+$//; s/-\([0-9]\+\)$/+dev\1/')
+
+          # shortened commit sha
+          commit_short=$(git rev-parse --short "${commit_sha}")
+
+          # multiline strings are weird
+          commit_message=$(git show -s --format=%B "${commit_sha}")
+          commit_message=${commit_message//$'%'/'%25'}
+          commit_message=${commit_message//$'\n'/'%0A'}
+          commit_message=${commit_message//$'\r'/'%0D'}
+
+          # get git user and email
+          author_name=$(git show -s --format='%an' "${commit_sha}")
+          author_email=$(git show -s --format='%ae' "${commit_sha}")
+
+          # extract branch name
+          if [ ${{ github.event_name }} != 'pull_request' ] && [ ${{ github.event_name }} != 'pull_request_target' ]
+          then
+            branch_name=${GITHUB_REF#refs/heads/}
+          else
+            branch_name=${GITHUB_HEAD_REF}
+          fi
+
+          upload_artifacts=false
+          if [[ ${branch_name} == main || ${branch_name} =~ ^release- ]]; then
+            upload_artifacts=true
+          fi
+
+          echo "IMAGES=${images}" >> $GITHUB_ENV
+          echo "TAGS=${tags}" >> $GITHUB_ENV
+          echo "LABELS=${labels}" >> $GITHUB_ENV
+          echo "DATE=${commit_date}" >> $GITHUB_ENV
+          echo "VERSION=${commit_version}" >> $GITHUB_ENV
+          echo "COMMIT=${commit_short}" >> $GITHUB_ENV
+          echo "commit_sha=${commit_sha}" >> $GITHUB_OUTPUT
+          echo "commit_msg=${commit_message}" >> $GITHUB_OUTPUT
+          echo "author_name=${author_name}" >> $GITHUB_OUTPUT
+          echo "author_email=${author_email}" >> $GITHUB_OUTPUT
+          echo "branch_name=${branch_name}" >> $GITHUB_OUTPUT
+          echo "upload_artifacts=${upload_artifacts}" >> $GITHUB_OUTPUT
+      -
+        name: Set GoReleaser environment
+        run: |
+          echo GOPATH=$(go env GOPATH) >> $GITHUB_ENV
+          echo PWD=$(pwd) >> $GITHUB_ENV
+      -
+        name: Run GoReleaser to build kubectl-cnpg plugin
+          uses: goreleaser/goreleaser-action@v3
+          if: |
+            github.event_name == 'schedule' || github.event.inputs.build_plugin == 'true'
+          with:
+            distribution: goreleaser
+            version: latest
+            args: build --skip-validate --rm-dist --id kubectl-cnpg
+          env:
+            DATE: ${{ env.DATE }}
+            COMMIT: ${{ env.COMMIT }}
+            VERSION: ${{ env.VERSION }}
+      - name: build rpm
+        uses: kentik/pkg@v1.0.0-rc8
+        with:
+          name: bin/kubectl-cnpg
+          version: 1.17.1
+          arch: x86_64
+          format: rpm
+          package: package.yaml
