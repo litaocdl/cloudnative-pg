@@ -1,0 +1,40 @@
+
+name: check
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        default: 'CI/CD'
+        description: 'product version, by default is CI/CD'
+      phase:
+        required: false
+        default: 'DEVELOPMENT'
+        description: 'product phase (DEVELOPMENT,RELEASED,PLANNING,PRERELEASE,ARCHIVED,DEPRECATED,)'
+      generate_risk_report:
+        type: boolean
+        required: false
+        default: true
+        description: Generate the risk report
+      license_report:
+        type: boolean
+        required: false
+        default: true
+        description: Generate the open source license report
+
+
+jobs:
+  duplicate_runs:
+    runs-on: ubuntu-20.04
+    name: Skip duplicate runs
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v4.0.0
+        with:
+          concurrent_skipping: 'same_content'
+          skip_after_successful_duplicate: 'true'
+          paths_ignore: '["README.md", "docs/**"]'
+          do_not_skip: '["pull_request", "workflow_dispatch", "schedule"]'
