@@ -49,6 +49,6 @@ jobs:
           body: "Update the versions used to test the operator on public cloud providers"
           branch: "k8s-cloud-versions-update"
           author: "public-cloud-k8s-versions-check <public-cloud-k8s-versions-check@users.noreply.github.com>"
-          path: ".github/"
+          add-path: ".github/"
           commit-message: "feat: Updated public cloud k8s tested versions"
           signoff: true
