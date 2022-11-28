@@ -240,7 +240,7 @@ func CreateGeneratedAntiAffinity(clusterName string, config apiv1.AffinityConfig
 		LabelSelector: &metav1.LabelSelector{
 			MatchExpressions: []metav1.LabelSelectorRequirement{
 				{
-					Key:      ClusterLabelName,
+					Key:      utils.ClusterLabelName,
 					Operator: metav1.LabelSelectorOpIn,
 					Values: []string{
 						clusterName,
@@ -280,18 +280,26 @@ func CreatePodSecurityContext(user, group int64) *corev1.PodSecurityContext {
 		return nil
 	}
 
+	seccompProfile := &corev1.SeccompProfile{
+		Type: corev1.SeccompProfileTypeRuntimeDefault,
+	}
+	if !utils.HaveSeccompSupport() {
+		seccompProfile = nil
+	}
+
 	trueValue := true
 	return &corev1.PodSecurityContext{
-		RunAsNonRoot: &trueValue,
-		RunAsUser:    &user,
-		RunAsGroup:   &group,
-		FSGroup:      &group,
+		RunAsNonRoot:   &trueValue,
+		RunAsUser:      &user,
+		RunAsGroup:     &group,
+		FSGroup:        &group,
+		SeccompProfile: seccompProfile,
 	}
 }
 
 // PodWithExistingStorage create a new instance with an existing storage
 func PodWithExistingStorage(cluster apiv1.Cluster, nodeSerial int) *corev1.Pod {
-	podName := fmt.Sprintf("%s-%v", cluster.Name, nodeSerial)
+	podName := GetInstanceName(cluster.Name, nodeSerial)
 	gracePeriod := int64(cluster.GetMaxStopDelay())
 
 	pod := &corev1.Pod{
@@ -329,6 +337,11 @@ func PodWithExistingStorage(cluster apiv1.Cluster, nodeSerial int) *corev1.Pod {
 		utils.AnnotateAppArmor(&pod.ObjectMeta, cluster.Annotations)
 	}
 	return pod
+}
+
+// GetInstanceName returns a string indicating the instance name
+func GetInstanceName(clusterName string, nodeSerial int) string {
+	return fmt.Sprintf("%s-%v", clusterName, nodeSerial)
 }
 
 // AddBarmanEndpointCAToPodSpec adds the required volumes and env variables needed by barman to work correctly

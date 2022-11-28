@@ -35,7 +35,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Failover", func() {
+var _ = Describe("Failover", Label(tests.LabelSelfHealing), func() {
 	const (
 		namespace   = "failover-e2e"
 		sampleFile  = fixturesDir + "/base/cluster-storage-class.yaml.template"
@@ -52,10 +52,6 @@ var _ = Describe("Failover", func() {
 			env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
 		}
 	})
-	AfterEach(func() {
-		err := env.DeleteNamespace(namespace)
-		Expect(err).ToNot(HaveOccurred())
-	})
 
 	// This tests only checks that after the failure of a primary the instance
 	// that has received/applied more WALs is promoted.
@@ -68,6 +64,9 @@ var _ = Describe("Failover", func() {
 		// Create a cluster in a namespace we'll delete after the test
 		err := env.CreateNamespace(namespace)
 		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() error {
+			return env.DeleteNamespace(namespace)
+		})
 
 		var pods []string
 		var currentPrimary, targetPrimary, pausedReplica, pid string

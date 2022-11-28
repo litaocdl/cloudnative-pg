@@ -30,6 +30,7 @@ BootstrapConfiguration
 BootstrapInitDB
 BootstrapPgBaseBackup
 BootstrapRecovery
+Burstable
 CIS
 CKA
 CN
@@ -79,6 +80,7 @@ CronJobs
 CustomResourceDefinition
 CustomResourceDefinitions
 Customizations
+DBA
 DDTHH
 DISA
 DNS
@@ -114,6 +116,7 @@ GPL
 GUC
 GUCs
 Gabriele
+GaugeVec
 Gi
 Golang
 GolangCI
@@ -136,6 +139,7 @@ Istio
 JSON
 Jihyuk
 Jitendra
+Krew
 Kumar
 LDAP
 LDAPBindAsAuth
@@ -175,6 +179,7 @@ NodeMaintenanceWindow
 NodeSelector
 Noland
 O'Reilly
+OOM
 OU
 ObjectMeta
 OnlineUpdateEnabled
@@ -201,6 +206,7 @@ PgBouncerSecrets
 PgBouncerSecretsVersions
 PgBouncerSpec
 Philippe
+PoLA
 PodAffinity
 PodAntiAffinity
 PodAntiAffinityType
@@ -229,6 +235,7 @@ PostgresConfiguration
 PrimaryUpdateMethod
 PrimaryUpdateStrategy
 PullPolicy
+QoS
 Quaresima
 QuickStart
 RBAC
@@ -242,6 +249,8 @@ RedHat
 RedHat's
 ReplicaClusterConfiguration
 ReplicaSet
+ReplicationSlotsConfiguration
+ReplicationSlotsHAConfiguration
 ReplicationTLSSecret
 ResizingPVC
 ResourceRequirements
@@ -281,6 +290,7 @@ ServiceMonitor
 Silvela
 Slonik
 SnapshotType
+StatefulSets
 StorageClass
 StorageConfiguration
 Storages
@@ -324,6 +334,7 @@ alloc
 allocator
 allowPrivilegeEscalation
 allowVolumeExpansion
+amd
 angus
 api
 apiGroup
@@ -441,6 +452,7 @@ cryptographic
 csvlog
 csvs
 ctl
+curlimages
 currentPrimary
 customQueriesConfigMap
 customQueriesSecret
@@ -522,10 +534,13 @@ goodwithtech
 googleCredentials
 goroutines
 gosec
+grafana
 gzip
+hashicorp
 hba
 hdr
 healthz
+highAvailability
 historyTags
 horikyota
 hostPort
@@ -543,6 +558,7 @@ imagePullSecrets
 img
 immediateCheckpoint
 inProgress
+indistinctively
 inheritFromAzureAD
 inheritFromIAMRole
 init
@@ -582,10 +598,12 @@ latn
 ldap
 ldapBindPassword
 ldapscheme
+le
 leonardoce
 li
 libpq
 lifecycle
+lifecycles
 linodeobjects
 linter
 linters
@@ -601,6 +619,7 @@ locktype
 lookups
 lsn
 lt
+macOS
 malcolm
 mallocs
 mario
@@ -658,6 +677,7 @@ olm
 openldap
 openshift
 operability
+operativity
 operatorframework
 operatorgorup
 operatorgroup
@@ -696,7 +716,6 @@ podMetricsEndpoints
 podName
 podmonitor
 podtemplates
-pood
 poolMode
 pooler
 poolerName
@@ -714,6 +733,7 @@ postgresImageName
 postgresUID
 postgresconfiguration
 postgresql
+ppc
 pprof
 pre
 preferredDuringSchedulingIgnoredDuringExecution
@@ -747,6 +767,7 @@ recoverytarget
 recv
 redhat
 relatime
+replicationSlots
 replicationTLSSecret
 repmgr
 reportNonRedacted
@@ -855,6 +876,7 @@ targetTLI
 targetTime
 targetXID
 tcp
+timeframes
 tls
 tmp
 tmpfs
@@ -876,6 +898,7 @@ usernamepassword
 usr
 utils
 valueFrom
+viceversa
 virtualized
 virtualxid
 volumeMode

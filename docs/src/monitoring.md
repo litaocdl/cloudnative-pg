@@ -1,6 +1,12 @@
 
 # Monitoring
 
+!!! Important
+    Installing Prometheus and Grafana is beyond the scope of this project.
+    We assume they are correctly installed in your system. However, for
+    experimentation we provide instructions in 
+    [Part 4 of the Quickstart](quickstart.md#part-4-monitor-clusters-with-prometheus-and-grafana).
+
 ## Monitoring Instances
 
 For each PostgreSQL instance, the operator provides an exporter of metrics for
@@ -15,15 +21,14 @@ more `ConfigMap` or `Secret` resources (see the
     [by default a set of predefined metrics](#default-set-of-metrics) in
     a `ConfigMap` called `default-monitoring`.
 
-Metrics can be accessed as follows:
-
-```shell
-curl http://<pod_ip>:9187/metrics
-```
+!!! Info
+    You can inspect the exported metrics by following the instructions in
+    the ["How to inspect the exported metrics"](#how-to-inspect-the-exported-metrics)
+    section below.
 
 All monitoring queries that are performed on PostgreSQL are:
 
-- transactionally atomic (one transaction per query)
+- atomic (one transaction per query)
 - executed with the `pg_monitor` role
 - executed with `application_name` set to `cnpg_metrics_exporter`
 - executed as user `postgres`
@@ -71,7 +76,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      postgresql: cluster-example
+      "cnpg.io/cluster": cluster-example
   podMetricsEndpoints:
   - port: metrics
 ```
@@ -466,7 +471,7 @@ Here is a short description of all the available fields:
     - `primary`: whether to run the query only on the primary instance <!-- wokeignore:rule=master -->
     - `master`: same as `primary` (for compatibility with the Prometheus PostgreSQL exporter's syntax - deprecated) <!-- wokeignore:rule=master -->
     - `runonserver`: a semantic version range to limit the versions of PostgreSQL the query should run on
-       (e.g. `">=10.0.0"` or `">=12.0.0 <=14.5.0"`)
+       (e.g. `">=10.0.0"` or `">=12.0.0 <=15.0.0"`)
     - `target_databases`: a list of databases to run the `query` against,
       or a [shell-like pattern](#example-of-a-user-defined-metric-running-on-multiple-databases)
       to enable auto discovery. Overwrites the default database if provided.
@@ -560,11 +565,10 @@ in CloudNativePG's exporter.
 The operator internally exposes [Prometheus](https://prometheus.io/) metrics
 via HTTP on port 8080, named `metrics`.
 
-Metrics can be accessed as follows:
-
-```shell
-curl http://<pod_ip>:8080/metrics
-```
+!!! Info
+    You can inspect the exported metrics by following the instructions in
+    the ["How to inspect the exported metrics"](#how-to-inspect-the-exported-metrics)
+    section below.
 
 Currently, the operator exposes default `kubebuilder` metrics, see
 [kubebuilder documentation](https://book.kubebuilder.io/reference/metrics.html) for more details.
@@ -588,3 +592,101 @@ spec:
   podMetricsEndpoints:
     - port: metrics
 ```
+
+## How to inspect the exported metrics
+
+In this section we provide some basic instructions on how to inspect
+the metrics exported by a specific PostgreSQL instance manager (primary
+or replica) or the operator, using a temporary pod running `curl` in
+the same namespace.
+
+!!! Note
+    In the example below we assume we are working in the default namespace,
+    alongside with the PostgreSQL cluster. Please feel free to adapt
+    this example to your use case, by applying basic Kubernetes knowledge.
+
+Create the `curl.yaml` file with this content:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: curl
+spec:
+  containers:
+  - name: curl
+    image: curlimages/curl:7.84.0
+    command: ['sleep', '3600']
+```
+
+Then create the pod:
+
+```shell
+kubectl apply -f curl.yaml
+```
+
+In case you want to inspect the metrics exported by an instance, you need
+to connect to port 9187 of the target pod. This is the generic command to be
+run (make sure you use the correct IP for the pod):
+
+```shell
+kubectl exec -ti curl -- curl -s <pod_ip>:9187/metrics
+```
+
+For example, if your PostgreSQL cluster is called `cluster-example` and
+you want to retrieve the exported metrics of the first pod in the cluster,
+you can run the following command to programmatically get the IP of
+that pod:
+
+```shell
+POD_IP=$(kubectl get pod cluster-example-1 --template '{{.status.podIP}}')
+```
+
+And then run:
+
+```shell
+kubectl exec -ti curl -- curl -s ${POD_IP}:9187/metrics
+```
+
+In case you want to access the metrics of the operator, you need to point
+to the pod where the operator is running, and use TCP port 8080 as target.
+
+At the end of the inspection, please make sure you delete the `curl` pod:
+
+```shell
+kubectl delete -f curl.yaml
+```
+
+## Auxiliary resources
+
+!!! Important
+    These resources are provided for illustration and experimentation, and do
+    not represent any kind of recommendation for your production system
+
+In the [`doc/src/samples/monitoring/`](https://github.com/cloudnative-pg/cloudnative-pg/tree/main/docs/src/samples/monitoring)
+directory you will find a series of sample files for observability.
+Please refer to [Part 4 of the quickstart](quickstart.md#part-4-monitor-clusters-with-prometheus-and-grafana)
+section for context:
+
+- `kube-stack-config.yaml`: a configuration file for the kube-stack helm chart
+  installation. It ensures that Prometheus listens for all PodMonitor resources.
+- `cnpg-prometheusrule.yaml`: a `PrometheusRule` with alerts for CloudNativePG.
+  NOTE: this does not include inter-operation with notification services. Please refer
+  to the [Prometheus documentation](https://prometheus.io/docs/alerting/latest/alertmanager/).
+- `grafana-configmap.yaml`: a ConfigMap containing the definition of the sample
+  CloudNativePG Dashboard. Note the labels in the definition, which ensure that
+  the Grafana deployment will find the ConfigMap.
+
+In addition, we provide the "raw" sources for the Grafana dashboard and the
+Prometheus alert rules, for your reference:
+
+- `alerts.yaml`: Prometheus rules with alerts
+- `grafana-dashboard.json`: the CloudNativePG dashboard as a native Grafana JSON.
+
+Note that, for the configuration of `kube-prometheus-stack`, other fields and
+settings are available over what we provide in `kube-stack-config.yaml`.
+
+You can execute `helm show values prometheus-community/kube-prometheus-stack`
+to view them. For further information, please refer to the
+[kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack)
+page.

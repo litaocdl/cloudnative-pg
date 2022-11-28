@@ -70,8 +70,17 @@ type PostgresqlStatus struct {
 
 	// This field is set when there is an error while extracting the
 	// status of a Pod
-	Error   error `json:"-"`
-	IsReady bool  `json:"isReady"`
+	Error error `json:"-"`
+
+	// This field represents the Kubelet point-of-view of the readiness
+	// status of this instance and may be slightly stale when the Kubelet has
+	// not still invoked the readiness probe.
+	//
+	// If you want to check the latest detected status of PostgreSQL, you
+	// need to call IsPostgresqlReady().
+	//
+	// This field is never populated in the instance manager.
+	IsPodReady bool `json:"isPodReady"`
 
 	// Status of the instance manager
 	ExecutableHash             string `json:"executableHash"`
@@ -81,6 +90,8 @@ type PostgresqlStatus struct {
 
 	// contains the PgStatReplication rows content.
 	ReplicationInfo PgStatReplicationList `json:"replicationInfo,omitempty"`
+	// contains the PgReplicationSlot rows content.
+	ReplicationSlotsInfo PgReplicationSlotList `json:"replicationSlotsInfo,omitempty"`
 }
 
 // PgStatReplication contains the replications of replicas as reported by the primary instance
@@ -98,8 +109,52 @@ type PgStatReplication struct {
 	SyncPriority    string `json:"syncPriority,omitempty"`
 }
 
+// AddPod store the Pod inside the status
+func (status *PostgresqlStatus) AddPod(pod corev1.Pod) {
+	status.Pod = pod
+
+	// IsPodReady is not populated by the instance manager, so we detect it from the
+	// Pod status
+	status.IsPodReady = utils.IsPodReady(pod)
+	status.Node = pod.Spec.NodeName
+}
+
+// IsPostgresqlReady checks if the instance manager is reporting this
+// instance as ready.
+//
+// The result represents the state of PostgreSQL at the moment of the
+// collection of the instance status and is more up-to-date than
+// IsPodReady field, which is updated asynchronously.
+func (status PostgresqlStatus) IsPostgresqlReady() bool {
+	// To load the status of this instance, we use the `/pg/status` endpoint
+	// of the instance manager. PostgreSQL is ready and running if the
+	// endpoint returns success, and the Error field will be nil.
+	//
+	// Otherwise, we didn't manage to collect the status of the PostgreSQL
+	// instance, and we'll have an error inside the Error field.
+	return status.Error != nil
+}
+
 // PgStatReplicationList is a list of PgStatReplication reported by the primary instance
 type PgStatReplicationList []PgStatReplication
+
+// PgReplicationSlot contains the replication slots status as reported by the primary instance
+type PgReplicationSlot struct {
+	SlotName    string `json:"slotName,omitempty"`
+	Plugin      string `json:"plugin,omitempty"`
+	SlotType    string `json:"slotType,omitempty"`
+	Datoid      string `json:"datoid,omitempty"`
+	Database    string `json:"database,omitempty"`
+	Active      bool   `json:"active,omitempty"`
+	Xmin        string `json:"xmin,omitempty"`
+	CatalogXmin string `json:"catalogXmin,omitempty"`
+	RestartLsn  string `json:"restartLsn,omitempty"`
+	WalStatus   string `json:"walStatus,omitempty"`
+	SafeWalSize *int   `json:"safeWalSize,omitempty"`
+}
+
+// PgReplicationSlotList is a list of PgReplicationSlot reported by the primary instance
+type PgReplicationSlotList []PgReplicationSlot
 
 // Len implements sort.Interface extracting the length of the list
 func (list PgStatReplicationList) Len() int {
@@ -162,9 +217,10 @@ func (list *PostgresqlStatusList) LogStatus(ctx context.Context) {
 			"receivedLsn", item.ReceivedLsn,
 			"replayLsn", item.ReplayLsn,
 			"isPrimary", item.IsPrimary,
-			"isReady", item.IsReady,
+			"isPodReady", item.IsPodReady,
 			"pendingRestart", item.PendingRestart,
-			"pendingRestartForDecrease", item.PendingRestartForDecrease)
+			"pendingRestartForDecrease", item.PendingRestartForDecrease,
+			"statusCollectionError", item.Error)
 	}
 
 	contextLogger.Debug(
@@ -195,15 +251,6 @@ func (list *PostgresqlStatusList) Less(i, j int) bool {
 		return false
 	case list.Items[i].Error == nil && list.Items[j].Error != nil:
 		return true
-	}
-
-	// Non-ready Pods go to the bottom of the list
-	// since we prefer ready Pods as new primary
-	switch {
-	case list.Items[i].IsReady && !list.Items[j].IsReady:
-		return true
-	case !list.Items[i].IsReady && list.Items[j].IsReady:
-		return false
 	}
 
 	// Manage primary servers

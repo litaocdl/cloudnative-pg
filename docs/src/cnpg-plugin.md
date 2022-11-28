@@ -4,12 +4,18 @@ CloudNativePG provides a plugin for `kubectl` to manage a cluster in Kubernetes.
 
 ## Install
 
-You can install the plugin in your system with:
+You can install the cnpg plugin system either running the provided install script:
 
 ```sh
 curl -sSfL \
   https://github.com/cloudnative-pg/cloudnative-pg/raw/main/hack/install-cnpg-plugin.sh | \
   sudo sh -s -- -b /usr/local/bin
+```
+
+Or, if you already have [Krew](https://krew.sigs.k8s.io/) installed, you can simply run:
+
+```sh
+kubectl krew install cnpg
 ```
 
 ### Supported Architectures
@@ -39,6 +45,49 @@ Once the plugin was installed and deployed, you can start using it like this:
 ```shell
 kubectl cnpg <command> <args...>
 ```
+
+### Generation of installation manifests
+
+The `cnpg` plugin can be used to generate the YAML manifest for the
+installation of the operator. This option would typically be used if you want
+to override some default configurations such as number of replicas,
+installation namespace, namespaces to watch, and so on.
+
+For details and available options, run:
+
+```shell
+kubectl cnpg install generate --help
+```
+
+The main options are:
+
+- `-n`: the namespace in which to install the operator (by default: `cnpg-system`)
+- `--replicas`: number of replicas in the deployment
+- `--version`: minor version of the operator to be installed, such as `1.17`.
+  If a minor version is specified, the plugin will install the latest patch
+  version of that minor version. If no version is supplied the plugin will
+  install the latest `MAJOR.MINOR.PATCH` version of the operator.
+- `--watch-namespace`: comma separated string containing the namespaces to
+  watch (by default all namespaces)
+
+An example of the `generate` command, which will generate a YAML manifest that
+will install the operator, is as follows:
+
+```shell
+kubectl cnpg install generate \
+  -n king \
+  --version 1.17 \
+  --replicas 3 \
+  --watch-namespace "albert, bb, freddie" \
+  > operator.yaml
+```
+
+The flags in the above command have the following meaning:
+- `-n king` install the CNPG operator into the `king` namespace
+- `--version 1.17` install the latest patch version for minor version 1.17
+- `--replicas 3` install the operator with 3 replicas
+- `--watch-namespaces "albert, bb, freddie"` have the operator watch for
+  changes in the `albert`, `bb` and `freddie` namespaces only
 
 ### Status
 
@@ -73,7 +122,7 @@ Cluster in healthy state
 Name:               sandbox
 Namespace:          default
 System ID:          7039966298120953877
-PostgreSQL Image:   ghcr.io/cloudnative-pg/postgresql:14.5
+PostgreSQL Image:   ghcr.io/cloudnative-pg/postgresql:15.1
 Primary instance:   sandbox-2
 Instances:          3
 Ready instances:    3
@@ -118,7 +167,7 @@ Cluster in healthy state
 Name:               sandbox
 Namespace:          default
 System ID:          7039966298120953877
-PostgreSQL Image:   ghcr.io/cloudnative-pg/postgresql:14.5
+PostgreSQL Image:   ghcr.io/cloudnative-pg/postgresql:15.1
 Primary instance:   sandbox-2
 Instances:          3
 Ready instances:    3
@@ -367,13 +416,13 @@ default time-stamped filename is created for the zip file.
     namespace as the clusters.
     E.g. the default installation namespace is cnpg-system
 
-``` shell
+```shell
 kubectl cnpg report operator -n <namespace>
 ```
 
 results in
 
-``` shell
+```shell
 Successfully written report to "report_operator_<TIMESTAMP>.zip" (format: "yaml")
 ```
 
@@ -392,28 +441,28 @@ unzip reportRedacted.zip
 
 will result in:
 
-``` shell
+```shell
 Archive:  reportRedacted.zip
    creating: report_operator_<TIMESTAMP>/
    creating: report_operator_<TIMESTAMP>/manifests/
-  inflating: report_operator_<TIMESTAMP>/manifests/deployment.yaml  
-  inflating: report_operator_<TIMESTAMP>/manifests/operator-pod.yaml  
-  inflating: report_operator_<TIMESTAMP>/manifests/events.yaml  
-  inflating: report_operator_<TIMESTAMP>/manifests/validating-webhook-configuration.yaml  
-  inflating: report_operator_<TIMESTAMP>/manifests/mutating-webhook-configuration.yaml  
-  inflating: report_operator_<TIMESTAMP>/manifests/webhook-service.yaml  
+  inflating: report_operator_<TIMESTAMP>/manifests/deployment.yaml
+  inflating: report_operator_<TIMESTAMP>/manifests/operator-pod.yaml
+  inflating: report_operator_<TIMESTAMP>/manifests/events.yaml
+  inflating: report_operator_<TIMESTAMP>/manifests/validating-webhook-configuration.yaml
+  inflating: report_operator_<TIMESTAMP>/manifests/mutating-webhook-configuration.yaml
+  inflating: report_operator_<TIMESTAMP>/manifests/webhook-service.yaml
   inflating: report_operator_<TIMESTAMP>/manifests/cnpg-ca-secret.yaml
   inflating: report_operator_<TIMESTAMP>/manifests/cnpg-webhook-cert.yaml
 ```
 
 You can verify that the confidential information is REDACTED:
 
-``` shell
+```shell
 cd report_operator_<TIMESTAMP>/manifests/
 head cnpg-ca-secret.yaml
 ```
 
-``` yaml
+```yaml
 data:
   ca.crt: ""
   ca.key: ""
@@ -433,17 +482,17 @@ kubectl cnpg report operator -n <namespace> -f reportNonRedacted.zip -S
 
 You'll get a reminder that you're about to view confidential information:
 
-``` shell
+```shell
 WARNING: secret Redaction is OFF. Use it with caution
 Successfully written report to "reportNonRedacted.zip" (format: "yaml")
 ```
 
-``` shell
+```shell
 unzip reportNonRedacted.zip
 head cnpg-ca-secret.yaml
 ```
 
-``` yaml
+```yaml
 data:
   ca.crt: LS0tLS1CRUdJTiBD…
   ca.key: LS0tLS1CRUdJTiBF…
@@ -476,7 +525,7 @@ so the `-S` is disabled.
 
 Usage:
 
-``` shell
+```shell
 kubectl cnpg report cluster <clusterName> [flags]
 ```
 
@@ -484,17 +533,17 @@ Note that, unlike the `operator` sub-command, for the `cluster` sub-command you
 need to provide the cluster name, and very likely the namespace, unless the cluster
 is in the default one.
 
-``` shell
+```shell
 kubectl cnpg report cluster example -f report.zip -n example_namespace
 ```
 
 and then:
 
-``` shell
+```shell
 unzip report.zip
 ```
 
-``` shell
+```shell
 Archive:  report.zip
    creating: report_cluster_example_<TIMESTAMP>/
    creating: report_cluster_example_<TIMESTAMP>/manifests/
@@ -506,21 +555,21 @@ Archive:  report.zip
 
 Remember that you can use the `--logs` flag to add the pod and job logs to the ZIP.
 
-``` shell
+```shell
 kubectl cnpg report cluster example -n example_namespace --logs
 ```
 
 will result in:
 
-``` shell
+```shell
 Successfully written report to "report_cluster_example_<TIMESTAMP>.zip" (format: "yaml")
 ```
 
-``` shell
+```shell
 unzip report_cluster_<TIMESTAMP>.zip
 ```
 
-``` shell
+```shell
 Archive:  report_cluster_example_<TIMESTAMP>.zip
    creating: report_cluster_example_<TIMESTAMP>/
    creating: report_cluster_example_<TIMESTAMP>/manifests/
@@ -559,3 +608,69 @@ PVCs:
 ```
 kubectl cnpg destroy cluster-example 2
 ```
+
+### Cluster hibernation
+
+Sometimes you may want to suspend the execution of a CloudNativePG `Cluster`
+while retaining its data, then resume its activity at a later time. We've
+called this feature **cluster hibernation**.
+
+Hibernation is only available via the `kubectl cnpg hibernate [on|off]`
+commands.
+
+Hibernating a CloudNativePG cluster means destroying all the resources
+generated by the cluster, except the PVCs that belong to the PostgreSQL primary
+instance.
+
+You can hibernate a cluster with:
+
+```
+kubectl cnpg hibernate on <cluster-name>
+```
+
+This will:
+
+1. shutdown every PostgreSQL instance
+2. detach the PVCs containing the data of the primary instance, and annotate
+   them with the latest database status and the latest cluster configuration
+3. delete the `Cluster` resource, including every generated resource - except
+   the aforementioned PVCs
+
+When hibernated, a CloudNativePG cluster is represented by just a group of
+PVCs, in which the one containing the `PGDATA` is annotated with the latest
+available status, including content from `pg_controldata`.
+
+!!! Warning
+    A cluster having fenced instances cannot be hibernated, as fencing is
+    part of the hibernation procedure too.
+
+In case of error the operator will not be able to revert the procedure. You can
+still force the operation with:
+
+```
+kubectl cnpg hibernate on cluster-example --force
+```
+
+A hibernated cluster can be resumed with:
+
+```
+kubectl cnpg hibernate off <cluster-name>
+```
+
+Once the cluster has been hibernated, it's possible to show the last
+configuration and the status that PostgreSQL had after it was shut down.
+That can be done with:
+
+```
+kubectl cnpg hibernate status <cluster-name>
+```
+
+### Benchmarking the database with pgbench
+
+Pgbench can be ran on an existing PostgreSQL cluster with following command:
+
+```
+kubectl cnpg pgbench <cluster-name> -- --time 30 --client 1 --jobs 1
+```
+
+Refer to the [Benchmarking section](benchmarking.md) for more details.

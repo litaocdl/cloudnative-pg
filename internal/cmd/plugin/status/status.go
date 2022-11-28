@@ -19,25 +19,27 @@ package status
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cheynewallace/tabby"
 	"github.com/logrusorgru/aurora/v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	"github.com/cloudnative-pg/cloudnative-pg/internal/cmd/plugin"
+	"github.com/cloudnative-pg/cloudnative-pg/internal/plugin/resources"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/postgres/constants"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/postgres"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/specs"
+	"github.com/cloudnative-pg/cloudnative-pg/pkg/stringset"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/utils"
 )
 
@@ -52,6 +54,33 @@ type PostgresqlStatus struct {
 
 	// PrimaryPod contains the primary Pod
 	PrimaryPod corev1.Pod
+}
+
+func (fullStatus *PostgresqlStatus) getReplicationSlotList() postgres.PgReplicationSlotList {
+	primary := fullStatus.tryGetPrimaryInstance()
+	if primary == nil {
+		return nil
+	}
+
+	return primary.ReplicationSlotsInfo
+}
+
+func (fullStatus *PostgresqlStatus) getPrintableReplicationSlotInfo(instanceName string) *postgres.PgReplicationSlot {
+	for _, slot := range fullStatus.getReplicationSlotList() {
+		expectedSlotName := fullStatus.Cluster.GetSlotNameFromInstanceName(instanceName)
+		if slot.SlotName == expectedSlotName {
+			return &slot
+		}
+	}
+
+	return nil
+}
+
+func getPrintableIntegerPointer(i *int) string {
+	if i == nil {
+		return "NULL"
+	}
+	return strconv.Itoa(*i)
 }
 
 // Status implements the "status" subcommand
@@ -80,7 +109,8 @@ func Status(ctx context.Context, clusterName string, verbose bool, format plugin
 	}
 	status.printCertificatesStatus()
 	status.printBackupStatus()
-	status.printReplicaStatus()
+	status.printReplicaStatus(verbose)
+	status.printUnmanagedReplicationSlotStatus()
 	status.printInstancesStatus()
 
 	if nonFatalError != nil {
@@ -101,26 +131,12 @@ func ExtractPostgresqlStatus(ctx context.Context, clusterName string) (*Postgres
 
 	// Get the list of Pods created by this Cluster
 	var instancesStatus postgres.PostgresqlStatusList
-	var pods corev1.PodList
-	err = plugin.Client.List(ctx, &pods, client.InNamespace(plugin.Namespace))
+	managedPods, primaryPod, err := resources.GetInstancePods(ctx, clusterName)
 	if err != nil {
 		return nil, err
 	}
 
-	var managedPods []corev1.Pod
-	var primaryPod corev1.Pod
-	for idx := range pods.Items {
-		for _, owner := range pods.Items[idx].ObjectMeta.OwnerReferences {
-			if owner.Kind == apiv1.ClusterKind && owner.Name == clusterName {
-				managedPods = append(managedPods, pods.Items[idx])
-				if specs.IsPodPrimary(pods.Items[idx]) {
-					primaryPod = pods.Items[idx]
-				}
-			}
-		}
-	}
-
-	instancesStatus = extractInstancesStatus(
+	instancesStatus = resources.ExtractInstancesStatus(
 		ctx,
 		plugin.Config,
 		managedPods,
@@ -135,11 +151,23 @@ func ExtractPostgresqlStatus(ctx context.Context, clusterName string) (*Postgres
 	return &status, nil
 }
 
+func listFencedInstances(fencedInstances *stringset.Data) string {
+	if fencedInstances.Has(utils.FenceAllServers) {
+		return "All Instances"
+	}
+	return strings.Join(fencedInstances.ToList(), ", ")
+}
+
 func (fullStatus *PostgresqlStatus) printBasicInfo() {
-	fmt.Println(aurora.Green("Cluster Summary"))
 	summary := tabby.New()
 
 	cluster := fullStatus.Cluster
+
+	if cluster.IsReplica() {
+		fmt.Println(aurora.Yellow("Replica Cluster Summary"))
+	} else {
+		fmt.Println(aurora.Green("Cluster Summary"))
+	}
 
 	primaryInstance := cluster.Status.CurrentPrimary
 	if cluster.Status.CurrentPrimary != cluster.Status.TargetPrimary {
@@ -147,16 +175,11 @@ func (fullStatus *PostgresqlStatus) printBasicInfo() {
 			cluster.Status.CurrentPrimary, cluster.Status.TargetPrimary)
 	}
 
-	var status string
-	switch cluster.Status.Phase {
-	case apiv1.PhaseHealthy, apiv1.PhaseFirstPrimary, apiv1.PhaseCreatingReplica:
-		status = fmt.Sprintf("%v %v", aurora.Green(cluster.Status.Phase), cluster.Status.PhaseReason)
-	case apiv1.PhaseUpgrade, apiv1.PhaseWaitingForUser:
-		status = fmt.Sprintf("%v %v", aurora.Yellow(cluster.Status.Phase), cluster.Status.PhaseReason)
-	default:
-		status = fmt.Sprintf("%v %v", aurora.Red(cluster.Status.Phase), cluster.Status.PhaseReason)
+	fencedInstances, err := utils.GetFencedInstances(cluster.Annotations)
+	if err != nil {
+		fmt.Printf("could not check if cluster is fenced: %v", err)
 	}
-
+	isPrimaryFenced := cluster.IsInstanceFenced(cluster.Status.CurrentPrimary)
 	primaryInstanceStatus := fullStatus.tryGetPrimaryInstance()
 
 	summary.AddLine("Name:", cluster.Name)
@@ -165,8 +188,13 @@ func (fullStatus *PostgresqlStatus) printBasicInfo() {
 		summary.AddLine("System ID:", primaryInstanceStatus.SystemID)
 	}
 	summary.AddLine("PostgreSQL Image:", cluster.GetImageName())
-	summary.AddLine("Primary instance:", primaryInstance)
-	summary.AddLine("Status:", status)
+	if cluster.IsReplica() {
+		summary.AddLine("Designated primary:", primaryInstance)
+		summary.AddLine("Source cluster: ", cluster.Spec.ReplicaCluster.Source)
+	} else {
+		summary.AddLine("Primary instance:", primaryInstance)
+	}
+	summary.AddLine("Status:", fullStatus.getStatus(isPrimaryFenced, cluster))
 	if cluster.Spec.Instances == cluster.Status.Instances {
 		summary.AddLine("Instances:", aurora.Green(cluster.Spec.Instances))
 	} else {
@@ -176,6 +204,14 @@ func (fullStatus *PostgresqlStatus) printBasicInfo() {
 		summary.AddLine("Ready instances:", aurora.Green(cluster.Status.ReadyInstances))
 	} else {
 		summary.AddLine("Ready instances:", aurora.Red(cluster.Status.ReadyInstances))
+	}
+
+	if fencedInstances != nil && fencedInstances.Len() > 0 {
+		if isPrimaryFenced {
+			summary.AddLine("Fenced instances:", aurora.Red(listFencedInstances(fencedInstances)))
+		} else {
+			summary.AddLine("Fenced instances:", aurora.Yellow(listFencedInstances(fencedInstances)))
+		}
 	}
 
 	if cluster.Status.CurrentPrimary != cluster.Status.TargetPrimary {
@@ -197,6 +233,21 @@ func (fullStatus *PostgresqlStatus) printBasicInfo() {
 
 	summary.Print()
 	fmt.Println()
+}
+
+func (fullStatus *PostgresqlStatus) getStatus(isPrimaryFenced bool, cluster *apiv1.Cluster) string {
+	if isPrimaryFenced {
+		return fmt.Sprintf("%v", aurora.Red("Primary instance is fenced"))
+	}
+
+	switch cluster.Status.Phase {
+	case apiv1.PhaseHealthy, apiv1.PhaseFirstPrimary, apiv1.PhaseCreatingReplica:
+		return fmt.Sprintf("%v %v", aurora.Green(cluster.Status.Phase), cluster.Status.PhaseReason)
+	case apiv1.PhaseUpgrade, apiv1.PhaseWaitingForUser:
+		return fmt.Sprintf("%v %v", aurora.Yellow(cluster.Status.Phase), cluster.Status.PhaseReason)
+	default:
+		return fmt.Sprintf("%v %v", aurora.Red(cluster.Status.Phase), cluster.Status.PhaseReason)
+	}
 }
 
 func (fullStatus *PostgresqlStatus) printPostgresConfiguration(ctx context.Context) error {
@@ -285,7 +336,108 @@ func getWalArchivingStatus(isArchivingWAL bool, lastFailedWAL string) string {
 	}
 }
 
-func (fullStatus *PostgresqlStatus) printReplicaStatus() {
+func (fullStatus *PostgresqlStatus) areReplicationSlotsEnabled() bool {
+	return fullStatus.Cluster.Spec.ReplicationSlots != nil &&
+		fullStatus.Cluster.Spec.ReplicationSlots.HighAvailability != nil &&
+		fullStatus.Cluster.Spec.ReplicationSlots.HighAvailability.Enabled
+}
+
+func (fullStatus *PostgresqlStatus) printReplicaStatusTableHeader(table *tabby.Tabby, verbose bool) {
+	switch {
+	case fullStatus.areReplicationSlotsEnabled() && verbose:
+		table.AddHeader(
+			"Name",
+			"Sent LSN",
+			"Write LSN",
+			"Flush LSN",
+			"Replay LSN", // For standby use "Replay LSN"
+			"Write Lag",
+			"Flush Lag",
+			"Replay Lag",
+			"State",
+			"Sync State",
+			"Sync Priority",
+			"Replication Slot", // Replication Slots
+			"Slot Restart LSN",
+			"Slot WAL Status",
+			"Slot Safe WAL Size",
+		)
+	case fullStatus.areReplicationSlotsEnabled() && !verbose:
+		table.AddHeader(
+			"Name",
+			"Sent LSN",
+			"Write LSN",
+			"Flush LSN",
+			"Replay LSN", // For standby use "Replay LSN"
+			"Write Lag",
+			"Flush Lag",
+			"Replay Lag",
+			"State",
+			"Sync State",
+			"Sync Priority",
+			"Replication Slot", // Replication Slots
+		)
+	default:
+		table.AddHeader(
+			"Name",
+			"Sent LSN",
+			"Write LSN",
+			"Flush LSN",
+			"Replay LSN", // For standby use "Replay LSN"
+			"Write Lag",
+			"Flush Lag",
+			"Replay Lag",
+			"State",
+			"Sync State",
+			"Sync Priority",
+		)
+	}
+}
+
+// addReplicationSlotsColumns append the column data for replication slot
+func (fullStatus *PostgresqlStatus) addReplicationSlotsColumns(
+	applicationName string,
+	columns *[]interface{},
+	verbose bool,
+) {
+	printSlotActivity := func(isActive bool) string {
+		if isActive {
+			return "active"
+		}
+		return "inactive"
+	}
+	slot := fullStatus.getPrintableReplicationSlotInfo(applicationName)
+	switch {
+	case slot != nil && verbose:
+		*columns = append(*columns,
+			printSlotActivity(slot.Active),
+			slot.RestartLsn,
+			slot.WalStatus,
+			getPrintableIntegerPointer(slot.SafeWalSize),
+		)
+	case slot != nil && !verbose:
+		*columns = append(*columns,
+			printSlotActivity(slot.Active),
+		)
+	case slot == nil && verbose:
+		*columns = append(*columns,
+			"-",
+			"-",
+			"-",
+			"-",
+		)
+	default:
+		*columns = append(*columns,
+			"-",
+		)
+	}
+}
+
+func (fullStatus *PostgresqlStatus) printReplicaStatus(verbose bool) {
+	if fullStatus.Cluster.IsReplica() {
+		return
+	}
+
 	fmt.Println(aurora.Green("Streaming Replication status"))
 	if fullStatus.Cluster.Spec.Instances == 1 {
 		fmt.Println(aurora.Yellow("Not configured").String())
@@ -306,25 +458,25 @@ func (fullStatus *PostgresqlStatus) printReplicaStatus() {
 		return
 	}
 
+	if fullStatus.areReplicationSlotsEnabled() {
+		fmt.Println(aurora.Yellow("Replication Slots Enabled").String())
+	}
+
 	status := tabby.New()
-	status.AddHeader(
-		"Name",
-		"Sent LSN",
-		"Write LSN",
-		"Flush LSN",
-		"Replay LSN", // For standby use "Replay LSN"
-		"Write Lag",
-		"Flush Lag",
-		"Replay Lag",
-		"State",
-		"Sync State",
-		"Sync Priority",
-	)
+	fullStatus.printReplicaStatusTableHeader(status, verbose)
+
+	// print Replication Slots columns only if the cluster has replication slots enabled
+	addReplicationSlotsColumns := func(applicationName string, columns *[]interface{}) {}
+	if fullStatus.areReplicationSlotsEnabled() {
+		addReplicationSlotsColumns = func(applicationName string, columns *[]interface{}) {
+			fullStatus.addReplicationSlotsColumns(applicationName, columns, verbose)
+		}
+	}
 
 	replicationInfo := primaryInstanceStatus.ReplicationInfo
 	sort.Sort(replicationInfo)
 	for _, replication := range replicationInfo {
-		status.AddLine(
+		columns := []interface{}{
 			replication.ApplicationName,
 			replication.SentLsn,
 			replication.WriteLsn,
@@ -336,7 +488,9 @@ func (fullStatus *PostgresqlStatus) printReplicaStatus() {
 			replication.State,
 			replication.SyncState,
 			replication.SyncPriority,
-		)
+		}
+		addReplicationSlotsColumns(replication.ApplicationName, &columns)
+		status.AddLine(columns...)
 	}
 	status.Print()
 	fmt.Println()
@@ -458,7 +612,8 @@ func (fullStatus *PostgresqlStatus) printCertificatesStatus() {
 
 func (fullStatus *PostgresqlStatus) tryGetPrimaryInstance() *postgres.PostgresqlStatus {
 	for idx, instanceStatus := range fullStatus.InstanceStatus.Items {
-		if instanceStatus.IsPrimary || len(instanceStatus.ReplicationInfo) > 0 {
+		if instanceStatus.IsPrimary || len(instanceStatus.ReplicationInfo) > 0 ||
+			fullStatus.isReplicaClusterDesignatedPrimary(instanceStatus) {
 			return &fullStatus.InstanceStatus.Items[idx]
 		}
 	}
@@ -477,7 +632,7 @@ func getReplicaRole(instance postgres.PostgresqlStatus, fullStatus *PostgresqlSt
 	if instance.IsPrimary {
 		return "Primary"
 	}
-	if fullStatus.Cluster.IsReplica() && len(instance.ReplicationInfo) > 0 {
+	if fullStatus.isReplicaClusterDesignatedPrimary(instance) {
 		return "Designated primary"
 	}
 
@@ -515,59 +670,82 @@ func getReplicaRole(instance postgres.PostgresqlStatus, fullStatus *PostgresqlSt
 		}
 	}
 
+	// TODO: improve the way we detect a standby in a replica cluster.
+	// A fuller fix would make sure the Designated Primary gets the replication
+	// list from pg_stat_replication
+	if len(primaryInstanceStatus.ReplicationInfo) == 0 {
+		return "Standby (in Replica Cluster)"
+	}
+
 	return "Unknown"
 }
 
-func extractInstancesStatus(
-	ctx context.Context,
-	config *rest.Config,
-	filteredPods []corev1.Pod,
-	postgresContainerName string,
-) postgres.PostgresqlStatusList {
-	var result postgres.PostgresqlStatusList
-
-	for idx := range filteredPods {
-		instanceStatus := getReplicaStatusFromPodViaExec(
-			ctx, config, filteredPods[idx], postgresContainerName)
-		instanceStatus.IsReady = utils.IsPodReady(filteredPods[idx])
-		result.Items = append(result.Items, instanceStatus)
-	}
-
-	return result
+// TODO: improve the way we detect the Designated Primary in a replica cluster
+func (fullStatus *PostgresqlStatus) isReplicaClusterDesignatedPrimary(instance postgres.PostgresqlStatus) bool {
+	return fullStatus.Cluster.IsReplica() && instance.Pod.Name == fullStatus.PrimaryPod.Name
 }
 
-func getReplicaStatusFromPodViaExec(
-	ctx context.Context,
-	config *rest.Config,
-	pod corev1.Pod,
-	postgresContainerName string,
-) postgres.PostgresqlStatus {
-	result := postgres.PostgresqlStatus{
-		Pod: pod,
+func (fullStatus *PostgresqlStatus) printUnmanagedReplicationSlotStatus() {
+	var unmanagedReplicationSlots postgres.PgReplicationSlotList
+	for _, slot := range fullStatus.getReplicationSlotList() {
+		// we skip replication slots that we manage
+		replicationSlots := fullStatus.Cluster.Spec.ReplicationSlots
+		if replicationSlots != nil && replicationSlots.HighAvailability != nil &&
+			strings.HasPrefix(slot.SlotName, replicationSlots.HighAvailability.GetSlotPrefix()) {
+			continue
+		}
+		unmanagedReplicationSlots = append(unmanagedReplicationSlots, slot)
 	}
 
-	timeout := time.Second * 2
-	clientInterface := kubernetes.NewForConfigOrDie(config)
-	stdout, _, err := utils.ExecCommand(
-		ctx,
-		clientInterface,
-		config,
-		pod,
-		postgresContainerName,
-		&timeout,
-		"/controller/manager", "instance", "status")
-	if err != nil {
-		result.Pod = pod
-		result.Error = fmt.Errorf("pod not available")
-		return result
+	const headerMessage = "Unmanaged Replication Slot Status"
+	status := tabby.New()
+	if len(unmanagedReplicationSlots) == 0 {
+		status.AddLine(aurora.Green(headerMessage))
+		status.AddLine("No unmanaged replication slots found")
+		fmt.Println()
+		return
 	}
 
-	err = json.Unmarshal([]byte(stdout), &result)
-	if err != nil {
-		result.Pod = pod
-		result.Error = fmt.Errorf("can't parse pod output")
-		return result
+	status.AddHeader(
+		"Slot Name",
+		"Slot Type",
+		"Database",
+		"Active",
+		"Restart LSN",
+		"XMin",
+		"Catalog XMin",
+		"Datoid",
+		"Plugin",
+		"Wal Status",
+		"Safe Wal Size",
+	)
+
+	var containsFailure bool
+	for _, slot := range unmanagedReplicationSlots {
+		// add any other failure conditions here
+		if !slot.Active {
+			containsFailure = true
+		}
+		status.AddLine(
+			slot.SlotName,
+			slot.SlotType,
+			slot.Database,
+			slot.Active,
+			slot.RestartLsn,
+			slot.Xmin,
+			slot.CatalogXmin,
+			slot.Datoid,
+			slot.Plugin,
+			slot.WalStatus,
+			getPrintableIntegerPointer(slot.SafeWalSize),
+		)
+	}
+	color := aurora.Green
+	if containsFailure {
+		color = aurora.Red
 	}
 
-	return result
+	fmt.Println(color(headerMessage))
+	status.Print()
+	fmt.Println()
 }

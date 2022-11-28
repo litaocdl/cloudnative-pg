@@ -28,7 +28,7 @@ import (
 
 // Set of tests in which we check that the operator is able to failover primary and brings back
 // replicas when we drain node
-var _ = Describe("E2E Tolerations Node", Serial, Label(tests.LabelDisruptive), func() {
+var _ = Describe("E2E Tolerations Node", Serial, Label(tests.LabelDisruptive, tests.LabelPodScheduling), func() {
 	var taintedNodes []string
 	namespace := "test-tolerations"
 	const (
@@ -44,14 +44,7 @@ var _ = Describe("E2E Tolerations Node", Serial, Label(tests.LabelDisruptive), f
 		}
 	})
 
-	JustAfterEach(func() {
-		if CurrentSpecReport().Failed() {
-			env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
-		}
-	})
-
 	AfterEach(func() {
-		_ = env.DeleteNamespace(namespace)
 		for _, node := range taintedNodes {
 			cmd := fmt.Sprintf("kubectl taint node %v %s=test:NoSchedule-", node, tolerationKey)
 			_, _, err := utils.Run(cmd)
@@ -64,6 +57,12 @@ var _ = Describe("E2E Tolerations Node", Serial, Label(tests.LabelDisruptive), f
 		// Initialize empty global namespace variable
 		err := env.CreateNamespace(namespace)
 		Expect(err).To(BeNil())
+		DeferCleanup(func() error {
+			if CurrentSpecReport().Failed() {
+				env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
+			}
+			return env.DeleteNamespace(namespace)
+		})
 
 		By("tainting all the nodes", func() {
 			nodes, _ := env.GetNodeList()

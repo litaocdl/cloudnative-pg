@@ -48,6 +48,18 @@ TODO:
 
 -->
 
+## Testing the latest development snapshot
+
+If you want to test or evaluate the latest development snapshot of
+CloudNativePG before the next official patch release, you can simply run:
+
+```sh
+kubectl apply -f \
+  https://raw.githubusercontent.com/cloudnative-pg/artifacts/main/manifests/operator-manifest.yaml
+```
+
+---
+
 ## Your development environment for CloudNativePG
 
 In order to write even the simplest patch for CloudNativePG you must have setup

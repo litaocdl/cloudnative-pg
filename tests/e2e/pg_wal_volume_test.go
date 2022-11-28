@@ -33,7 +33,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Separate pg_wal volume", func() {
+var _ = Describe("Separate pg_wal volume", Label(tests.LabelBackupRestore), func() {
 	const (
 		namespace   = "pg-wal-volume-e2e"
 		sampleFile  = fixturesDir + "/pg_wal_volume/cluster-pg-wal-volume.yaml.template"
@@ -45,15 +45,6 @@ var _ = Describe("Separate pg_wal volume", func() {
 			Skip("Test depth is lower than the amount requested for this test")
 		}
 	})
-	JustAfterEach(func() {
-		if CurrentSpecReport().Failed() {
-			env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
-		}
-	})
-	AfterEach(func() {
-		err := env.DeleteNamespace(namespace)
-		Expect(err).ToNot(HaveOccurred())
-	})
 
 	// This test checks for separate and dedicated pg_wal volume well behaving, by
 	// ensuring WAL files are archived to the correct location and a symlink
@@ -62,6 +53,13 @@ var _ = Describe("Separate pg_wal volume", func() {
 		// Create a cluster in a namespace we'll delete after the test
 		err := env.CreateNamespace(namespace)
 		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() error {
+			if CurrentSpecReport().Failed() {
+				env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
+			}
+			return env.DeleteNamespace(namespace)
+		})
+
 		AssertCreateCluster(namespace, clusterName, sampleFile, env)
 
 		PgWalDir := "/var/lib/postgresql/wal/pg_wal"

@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"sort"
 
 	"github.com/jackc/pgx/v4"
@@ -34,6 +35,7 @@ import (
 	apiv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/fileutils"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/management"
+	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/barman/archiver"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/execlog"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/external"
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/management/log"
@@ -247,6 +249,13 @@ func (info InitInfo) ConfigureNewInstance(instance *Instance) error {
 		return fmt.Errorf("could not execute post init application SQL refs: %w", err)
 	}
 
+	filePath := filepath.Join(info.PgData, archiver.CheckEmptyWalArchiveFile)
+	// We create the check empty wal archive file to tell that we should check if the
+	// destination path it is empty
+	if err := fileutils.CreateEmptyFile(filepath.Clean(filePath)); err != nil {
+		return fmt.Errorf("could not create %v file: %w", filePath, err)
+	}
+
 	return nil
 }
 
@@ -343,8 +352,9 @@ func (info InitInfo) Bootstrap(ctx context.Context) error {
 	}
 
 	if postgresVersion >= 120000 {
-		primaryConnInfo := buildPrimaryConnInfo(info.ClusterName, info.PodName)
-		_, err = configurePostgresAutoConfFile(info.PgData, primaryConnInfo)
+		primaryConnInfo := info.GetPrimaryConnInfo()
+		slotName := cluster.GetSlotNameFromInstanceName(info.PodName)
+		_, err = configurePostgresAutoConfFile(info.PgData, primaryConnInfo, slotName)
 		if err != nil {
 			return fmt.Errorf("while configuring replica: %w", err)
 		}

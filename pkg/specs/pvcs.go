@@ -53,6 +53,9 @@ var ErrorInvalidSize = fmt.Errorf("invalid storage size")
 
 // PVCUsageStatus is the status of the PVC we generated
 type PVCUsageStatus struct {
+	// List of available instances detected from pvcs
+	InstanceNames []string
+
 	// List of PVCs that are being initialized (they have a corresponding Job but not a corresponding Pod)
 	Initializing []string
 
@@ -78,7 +81,7 @@ func CreatePVC(
 	nodeSerial int,
 	role utils.PVCRole,
 ) (*corev1.PersistentVolumeClaim, error) {
-	instanceName := fmt.Sprintf("%s-%v", cluster.Name, nodeSerial)
+	instanceName := GetInstanceName(cluster.Name, nodeSerial)
 	pvcName := GetPVCName(cluster, instanceName, role)
 
 	result := &corev1.PersistentVolumeClaim{
@@ -106,22 +109,28 @@ func CreatePVC(
 		result.Spec.StorageClassName = storageConfiguration.StorageClass
 	}
 
-	// Insert the storage requirement
-	parsedSize, err := resource.ParseQuantity(storageConfiguration.Size)
-	if err != nil {
-		return nil, ErrorInvalidSize
-	}
+	if storageConfiguration.Size != "" {
+		// Insert the storage requirement
+		parsedSize, err := resource.ParseQuantity(storageConfiguration.Size)
+		if err != nil {
+			return nil, ErrorInvalidSize
+		}
 
-	result.Spec.Resources = corev1.ResourceRequirements{
-		Requests: corev1.ResourceList{
-			"storage": parsedSize,
-		},
+		result.Spec.Resources = corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				"storage": parsedSize,
+			},
+		}
 	}
 
 	if len(result.Spec.AccessModes) == 0 {
 		result.Spec.AccessModes = []corev1.PersistentVolumeAccessMode{
 			corev1.ReadWriteOnce,
 		}
+	}
+
+	if result.Spec.Resources.Requests.Storage().IsZero() {
+		return nil, ErrorInvalidSize
 	}
 
 	return result, nil
@@ -238,6 +247,20 @@ instancesLoop:
 		// Any extra PVC is already in the Unusable list
 		pvcNames = expectedPVCs
 
+		isAnyPvcUnusable := false
+		for _, pvc := range pvcs {
+			// We ignore any PVC that is not expected
+			if !slices.Contains(expectedPVCs, pvc.Name) {
+				continue
+			}
+			if pvc.Annotations[PVCStatusAnnotationName] != PVCStatusReady {
+				isAnyPvcUnusable = true
+			}
+		}
+
+		if !isAnyPvcUnusable {
+			result.InstanceNames = append(result.InstanceNames, instanceName)
+		}
 		// Search for a Pod corresponding to this instance.
 		// If found, all the PVCs are Healthy
 		for idx := range podList {
@@ -260,27 +283,17 @@ instancesLoop:
 			}
 		}
 
-		// At this point the PVCs are dangling, so we need to check if some of them has
-		// a PVC status annotation marking it as non-ready.
-		// In that case, all the instance PVCs are unusable
-		for _, pvc := range pvcs {
-			// We ignore any PVC that is not expected
-			if !slices.Contains(expectedPVCs, pvc.Name) {
-				continue
-			}
-
-			if pvc.Annotations[PVCStatusAnnotationName] != PVCStatusReady {
-				// This PVC has not a Job nor a Pod using it, but it is not marked as PVCStatusReady
-				// we need to ignore this instance and treat all the instance PVCs as unusable
-				result.Unusable = append(result.Unusable, pvcNames...)
-				contextLogger.Warning("found PVC that is not annotated as ready",
-					"pvcName", pvc.Name,
-					"instance", instanceName,
-					"expectedPVCs", expectedPVCs,
-					"foundPVCs", pvcNames,
-				)
-				continue instancesLoop
-			}
+		if isAnyPvcUnusable {
+			// This PVC has not a Job nor a Pod using it, but it is not marked as PVCStatusReady
+			// we need to ignore this instance and treat all the instance PVCs as unusable
+			result.Unusable = append(result.Unusable, pvcNames...)
+			contextLogger.Warning("found PVC that is not annotated as ready",
+				"pvcNames", pvcNames,
+				"instance", instanceName,
+				"expectedPVCs", expectedPVCs,
+				"foundPVCs", pvcNames,
+			)
+			continue instancesLoop
 		}
 
 		// These PVCs have not a Job nor a Pod using them, they are dangling

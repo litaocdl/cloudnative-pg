@@ -17,16 +17,17 @@ limitations under the License.
 package specs
 
 import (
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	apiv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	"github.com/cloudnative-pg/cloudnative-pg/pkg/utils"
 )
 
 // BuildReplicasPodDisruptionBudget creates a pod disruption budget telling
 // K8s to avoid removing more than one replica at a time
-func BuildReplicasPodDisruptionBudget(cluster *apiv1.Cluster) *policyv1beta1.PodDisruptionBudget {
+func BuildReplicasPodDisruptionBudget(cluster *apiv1.Cluster) *policyv1.PodDisruptionBudget {
 	// We should ensure that in a cluster of n instances,
 	// with n-1 replicas, at least n-2 are always available
 	if cluster == nil || cluster.Spec.Instances < 3 {
@@ -35,16 +36,16 @@ func BuildReplicasPodDisruptionBudget(cluster *apiv1.Cluster) *policyv1beta1.Pod
 	minAvailableReplicas := cluster.Spec.Instances - 2
 	allReplicasButOne := intstr.FromInt(minAvailableReplicas)
 
-	return &policyv1beta1.PodDisruptionBudget{
+	return &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cluster.Name,
 			Namespace: cluster.Namespace,
 		},
-		Spec: policyv1beta1.PodDisruptionBudgetSpec{
+		Spec: policyv1.PodDisruptionBudgetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					ClusterLabelName:     cluster.Name,
-					ClusterRoleLabelName: ClusterRoleLabelReplica,
+					utils.ClusterLabelName: cluster.Name,
+					ClusterRoleLabelName:   ClusterRoleLabelReplica,
 				},
 			},
 			MinAvailable: &allReplicasButOne,
@@ -54,22 +55,22 @@ func BuildReplicasPodDisruptionBudget(cluster *apiv1.Cluster) *policyv1beta1.Pod
 
 // BuildPrimaryPodDisruptionBudget creates a pod disruption budget, telling
 // K8s to avoid removing more than one primary instance at a time
-func BuildPrimaryPodDisruptionBudget(cluster *apiv1.Cluster) *policyv1beta1.PodDisruptionBudget {
+func BuildPrimaryPodDisruptionBudget(cluster *apiv1.Cluster) *policyv1.PodDisruptionBudget {
 	if cluster == nil {
 		return nil
 	}
 	one := intstr.FromInt(1)
 
-	return &policyv1beta1.PodDisruptionBudget{
+	return &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cluster.Name + apiv1.PrimaryPodDisruptionBudgetSuffix,
 			Namespace: cluster.Namespace,
 		},
-		Spec: policyv1beta1.PodDisruptionBudgetSpec{
+		Spec: policyv1.PodDisruptionBudgetSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					ClusterLabelName:     cluster.Name,
-					ClusterRoleLabelName: ClusterRoleLabelPrimary,
+					utils.ClusterLabelName: cluster.Name,
+					ClusterRoleLabelName:   ClusterRoleLabelPrimary,
 				},
 			},
 			MinAvailable: &one,

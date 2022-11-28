@@ -280,11 +280,11 @@ func (r *Cluster) Validate() (allErrs field.ErrorList) {
 		r.validatePrimaryUpdateStrategy,
 		r.validateMinSyncReplicas,
 		r.validateMaxSyncReplicas,
+		r.validateStorageSize,
 		r.validateWalStorageSize,
 		r.validateName,
 		r.validateBootstrapPgBaseBackupSource,
 		r.validateBootstrapRecoverySource,
-		r.validateRecoveryAndBackupTarget,
 		r.validateExternalClusters,
 		r.validateTolerations,
 		r.validateAntiAffinity,
@@ -292,6 +292,7 @@ func (r *Cluster) Validate() (allErrs field.ErrorList) {
 		r.validateBackupConfiguration,
 		r.validateConfiguration,
 		r.validateLDAP,
+		r.validateReplicationSlots,
 	}
 
 	for _, validate := range validations {
@@ -337,6 +338,7 @@ func (r *Cluster) ValidateChanges(old *Cluster) (allErrs field.ErrorList) {
 	allErrs = append(allErrs, r.validateWalStorageChange(old)...)
 	allErrs = append(allErrs, r.validateReplicaModeChange(old)...)
 	allErrs = append(allErrs, r.validateUnixPermissionIdentifierChange(old)...)
+	allErrs = append(allErrs, r.validateReplicationSlotsChange(old)...)
 	return allErrs
 }
 
@@ -1089,6 +1091,10 @@ func (r *Cluster) validateMinSyncReplicas() field.ErrorList {
 	return result
 }
 
+func (r *Cluster) validateStorageSize() field.ErrorList {
+	return validateStorageConfigurationSize("Storage", r.Spec.StorageConfiguration)
+}
+
 func (r *Cluster) validateWalStorageSize() field.ErrorList {
 	var result field.ErrorList
 
@@ -1102,13 +1108,23 @@ func (r *Cluster) validateWalStorageSize() field.ErrorList {
 func validateStorageConfigurationSize(structPath string, storageConfiguration StorageConfiguration) field.ErrorList {
 	var result field.ErrorList
 
-	if _, err := resource.ParseQuantity(storageConfiguration.Size); err != nil {
+	if storageConfiguration.Size != "" {
+		if _, err := resource.ParseQuantity(storageConfiguration.Size); err != nil {
+			result = append(result, field.Invalid(
+				field.NewPath("spec", structPath, "size"),
+				storageConfiguration.Size,
+				"Size value isn't valid"))
+		}
+	}
+
+	if storageConfiguration.Size == "" &&
+		(storageConfiguration.PersistentVolumeClaimTemplate == nil ||
+			storageConfiguration.PersistentVolumeClaimTemplate.Resources.Requests.Storage().IsZero()) {
 		result = append(result, field.Invalid(
 			field.NewPath("spec", structPath, "size"),
 			storageConfiguration.Size,
-			"Size value isn't valid"))
+			"Size not configured. Please add it, or a storage request in the pvcTemplate."))
 	}
-
 	return result
 }
 
@@ -1497,42 +1513,67 @@ func (r *Cluster) validateBackupConfiguration() field.ErrorList {
 	return allErrors
 }
 
-// validateRecoveryAndBackupTarget validates that the recovery point and
-// the backup point are not the same
-func (r *Cluster) validateRecoveryAndBackupTarget() field.ErrorList {
-	allErrors := field.ErrorList{}
-
-	if r.Spec.Bootstrap == nil || r.Spec.Bootstrap.Recovery == nil || r.Spec.Bootstrap.Recovery.Source == "" ||
-		r.Spec.Backup == nil || r.Spec.Backup.BarmanObjectStore == nil {
-		return allErrors
+func (r *Cluster) validateReplicationSlots() field.ErrorList {
+	replicationSlots := r.Spec.ReplicationSlots
+	if replicationSlots == nil ||
+		replicationSlots.HighAvailability == nil ||
+		!replicationSlots.HighAvailability.Enabled {
+		return nil
 	}
 
-	var sourceCluster *ExternalCluster
-	for i, cluster := range r.Spec.ExternalClusters {
-		if cluster.Name == r.Spec.Bootstrap.Recovery.Source {
-			sourceCluster = &r.Spec.ExternalClusters[i]
+	psqlVersion, err := r.GetPostgresqlVersion()
+	if err != nil {
+		// The validation error will be already raised by the
+		// validateImageName function
+		return nil
+	}
+
+	if psqlVersion >= 110000 {
+		return nil
+	}
+
+	return field.ErrorList{
+		field.Invalid(
+			field.NewPath("spec", "replicationSlots", "highAvailability", "enabled"),
+			replicationSlots.HighAvailability.Enabled,
+			"Cannot enable replication slot high availability. It requires PostgreSQL 11 or above"),
+	}
+}
+
+func (r *Cluster) validateReplicationSlotsChange(old *Cluster) field.ErrorList {
+	newReplicationSlots := r.Spec.ReplicationSlots
+	oldReplicationSlots := old.Spec.ReplicationSlots
+
+	if oldReplicationSlots == nil || oldReplicationSlots.HighAvailability == nil ||
+		!oldReplicationSlots.HighAvailability.Enabled {
+		return nil
+	}
+
+	var errs field.ErrorList
+
+	// when disabling we should check that the prefix it's not removed, and it doesn't change to
+	// properly execute the cleanup logic
+	if newReplicationSlots == nil || newReplicationSlots.HighAvailability == nil {
+		path := field.NewPath("spec", "replicationSlots")
+		if newReplicationSlots != nil {
+			path = path.Child("highAvailability")
 		}
-	}
-
-	if sourceCluster == nil || sourceCluster.BarmanObjectStore == nil {
-		return allErrors
-	}
-
-	barmanObjectStore := r.Spec.Backup.BarmanObjectStore
-	sourceBarmanObjectStore := sourceCluster.BarmanObjectStore
-
-	if barmanObjectStore.ServerName == sourceBarmanObjectStore.ServerName &&
-		barmanObjectStore.EndpointURL == sourceBarmanObjectStore.EndpointURL &&
-		barmanObjectStore.DestinationPath == sourceBarmanObjectStore.DestinationPath {
-		allErrors = append(
-			allErrors,
+		errs = append(errs,
 			field.Invalid(
-				field.NewPath("spec", "backup", "barmanObjectStore"),
-				"",
-				"Cannot be equal to the ExternalCluster used to recover from"))
+				path,
+				nil,
+				fmt.Sprintf("Cannot remove %v section while highAvailability is enabled", path)),
+		)
+	} else if oldReplicationSlots.HighAvailability.SlotPrefix != newReplicationSlots.HighAvailability.SlotPrefix {
+		errs = append(errs,
+			field.Invalid(
+				field.NewPath("spec", "replicationSlots", "highAvailability", "slotPrefix"),
+				newReplicationSlots.HighAvailability.SlotPrefix,
+				"Cannot change replication slot prefix while highAvailability is enabled"),
+		)
 	}
 
-	return allErrors
+	return errs
 }
 
 // validateAzureCredentials checks and validates the azure credentials

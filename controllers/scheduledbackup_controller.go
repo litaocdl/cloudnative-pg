@@ -87,7 +87,7 @@ func (r *ScheduledBackupReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// We are supposed to start a new backup. Let's extract
-	// the list of backups we already taken to see if anything
+	// the list of backups we have already taken to see if anything
 	// is running now
 	childBackups, err := r.GetChildBackups(ctx, scheduledBackup)
 	if err != nil {
@@ -97,7 +97,7 @@ func (r *ScheduledBackupReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// We are supposed to start a new backup. Let's extract
-	// the list of backups we already taken to see if anything
+	// the list of backups we have already taken to see if anything
 	// is running now
 	for _, backup := range childBackups {
 		if backup.GetStatus().IsInProgress() {
@@ -142,6 +142,7 @@ func ReconcileScheduledBackup(
 		if err != nil {
 			if apierrs.IsConflict(err) {
 				// Retry later, the cache is stale
+				contextLogger.Debug("Conflict while reconciling the scheduled backup", "error", err)
 				return ctrl.Result{}, nil
 			}
 			return ctrl.Result{}, err
@@ -218,6 +219,7 @@ func createBackup(
 	if err := client.Create(ctx, backup); err != nil {
 		if apierrs.IsConflict(err) {
 			// Retry later, the cache is stale
+			contextLogger.Debug("Conflict while creating backup", "error", err)
 			return ctrl.Result{}, nil
 		}
 
@@ -243,6 +245,7 @@ func createBackup(
 	if err := client.Status().Update(ctx, scheduledBackup); err != nil {
 		if apierrs.IsConflict(err) {
 			// Retry later, the cache is stale
+			contextLogger.Debug("Conflict while updating scheduled backup", "error", err)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err

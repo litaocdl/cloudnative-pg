@@ -29,7 +29,7 @@ import (
 
 // Test case for validating storage expansion
 // with different storage providers in different k8s environments
-var _ = Describe("Verify storage", func() {
+var _ = Describe("Verify storage", Label(tests.LabelStorage), func() {
 	const (
 		sampleFile  = fixturesDir + "/storage_expansion/cluster-storage-expansion.yaml.template"
 		clusterName = "storage-expansion"
@@ -45,17 +45,6 @@ var _ = Describe("Verify storage", func() {
 	// Gathering default storage class requires to check whether the value
 	// of 'allowVolumeExpansion' is true or false
 	defaultStorageClass := os.Getenv("E2E_DEFAULT_STORAGE_CLASS")
-
-	JustAfterEach(func() {
-		if CurrentSpecReport().Failed() {
-			env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
-		}
-	})
-
-	AfterEach(func() {
-		err := env.DeleteNamespace(namespace)
-		Expect(err).ToNot(HaveOccurred())
-	})
 
 	Context("can be expanded", func() {
 		BeforeEach(func() {
@@ -73,6 +62,12 @@ var _ = Describe("Verify storage", func() {
 			// Creating namespace
 			err := env.CreateNamespace(namespace)
 			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() error {
+				if CurrentSpecReport().Failed() {
+					env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
+				}
+				return env.DeleteNamespace(namespace)
+			})
 			// Creating a cluster with three nodes
 			AssertCreateCluster(namespace, clusterName, sampleFile, env)
 			OnlineResizePVC(namespace, clusterName)
@@ -95,6 +90,12 @@ var _ = Describe("Verify storage", func() {
 			// Creating namespace
 			err := env.CreateNamespace(namespace)
 			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() error {
+				if CurrentSpecReport().Failed() {
+					env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
+				}
+				return env.DeleteNamespace(namespace)
+			})
 			AssertCreateCluster(namespace, clusterName, sampleFile, env)
 			By("update cluster for resizeInUseVolumes as false", func() {
 				// Updating cluster with 'resizeInUseVolumes' sets to 'false' in storage.

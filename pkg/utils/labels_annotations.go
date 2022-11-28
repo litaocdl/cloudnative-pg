@@ -53,8 +53,21 @@ const (
 	// the status of the reconciliation loop for the cluster
 	ReconciliationLoopAnnotationName = "cnpg.io/reconciliationLoop"
 
-	// ReconciliationDisabledValue it the value that stops the reconciliation loop
-	ReconciliationDisabledValue = "disabled"
+	// HibernateClusterManifestAnnotationName contains the hibernated cluster manifest
+	HibernateClusterManifestAnnotationName = "cnpg.io/hibernateClusterManifest"
+
+	// HibernatePgControlDataAnnotationName contains the pg_controldata output of the hibernated cluster
+	HibernatePgControlDataAnnotationName = "cnpg.io/hibernatePgControlData"
+
+	// skipEmptyWalArchiveCheck turns off the checks that ensure that the WAL archive is empty before writing data
+	skipEmptyWalArchiveCheck = "cnpg.io/skipEmptyWalArchiveCheck"
+)
+
+type annotationStatus string
+
+const (
+	annotationStatusDisabled annotationStatus = "disabled"
+	annotationStatusEnabled  annotationStatus = "enabled"
 )
 
 // PodRole describes the Role of a given pod
@@ -186,5 +199,11 @@ func AnnotateAppArmor(object *metav1.ObjectMeta, annotations map[string]string) 
 
 // IsReconciliationDisabled checks if the reconciliation loop is disabled on the given resource
 func IsReconciliationDisabled(object *metav1.ObjectMeta) bool {
-	return object.Annotations[ReconciliationLoopAnnotationName] == ReconciliationDisabledValue
+	return object.Annotations[ReconciliationLoopAnnotationName] == string(annotationStatusDisabled)
+}
+
+// IsEmptyWalArchiveCheckEnabled returns a boolean indicating if we should run the logic that checks if the WAL archive
+// storage is empty
+func IsEmptyWalArchiveCheckEnabled(object *metav1.ObjectMeta) bool {
+	return object.Annotations[skipEmptyWalArchiveCheck] != string(annotationStatusEnabled)
 }

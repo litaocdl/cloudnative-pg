@@ -29,7 +29,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
+	policyv1 "k8s.io/api/policy/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -105,8 +105,8 @@ func NewClusterReconciler(mgr manager.Manager, discoveryClient *discovery.Discov
 var ErrNextLoop = errors.New("stop this loop and return the associated Result object")
 
 // Alphabetical order to not repeat or miss permissions
-// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=get;update;list
-// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=get;update;list
+// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,verbs=get;update;list;patch
+// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=validatingwebhookconfigurations,verbs=get;update;list;patch
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;update;list
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;delete;patch;create;watch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;create;update
@@ -166,6 +166,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 // Inner reconcile loop. Anything inside can require the reconciliation loop to stop by returning ErrNextLoop
+// nolint:gocognit
 func (r *ClusterReconciler) reconcile(ctx context.Context, cluster *apiv1.Cluster) (ctrl.Result, error) {
 	contextLogger := log.FromContext(ctx)
 
@@ -194,6 +195,11 @@ func (r *ClusterReconciler) reconcile(ctx context.Context, cluster *apiv1.Cluste
 		return ctrl.Result{}, err
 	}
 
+	// Ensure we reconcile the orphan resources if present when we reconcile for the first time a cluster
+	if err := r.reconcileRestoredCluster(ctx, cluster); err != nil {
+		return ctrl.Result{}, fmt.Errorf("cannot reconcile restored Cluster: %w", err)
+	}
+
 	// Ensure we have the required global objects
 	if err := r.createPostgresClusterObjects(ctx, cluster); err != nil {
 		return ctrl.Result{}, fmt.Errorf("cannot create Cluster auxiliary objects: %w", err)
@@ -211,6 +217,7 @@ func (r *ClusterReconciler) reconcile(ctx context.Context, cluster *apiv1.Cluste
 		if apierrs.IsConflict(err) {
 			// Requeue a new reconciliation cycle, as in this point we need
 			// to quickly react the changes
+			contextLogger.Debug("Conflict error while reconciling resource status", "error", err)
 			return ctrl.Result{Requeue: true}, nil
 		}
 
@@ -233,6 +240,8 @@ func (r *ClusterReconciler) reconcile(ctx context.Context, cluster *apiv1.Cluste
 	// we update all the cluster status fields that require the instances status
 	if err := r.updateClusterStatusThatRequiresInstancesState(ctx, cluster, instancesStatus); err != nil {
 		if apierrs.IsConflict(err) {
+			contextLogger.Debug("Conflict error while reconciling cluster status nad instance state",
+				"error", err)
 			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("cannot update the instances status on the cluster: %w", err)
@@ -247,6 +256,39 @@ func (r *ClusterReconciler) reconcile(ctx context.Context, cluster *apiv1.Cluste
 		onlineUpdateEnabled = false
 	}
 
+	// The instance list is sorted and will present the primary as the first
+	// element, followed by the replicas, the most updated coming first.
+	// Pods that are not responding will be at the end of the list. We use
+	// the information reported by the instance manager to sort the
+	// instances. When we need to elect a new primary, we take the first item
+	// on this list.
+	//
+	// Here we check the readiness status of the first Pod as we can't
+	// promote an instance that is not ready from the Kubernetes
+	// point-of-view: the services will not forward traffic to it even if
+	// PostgreSQL is up and running.
+	//
+	// An instance can be up and running even if the readiness probe is
+	// negative: this is going to happen, i.e., when an instance is
+	// un-fenced, and the Kubelet still hasn't refreshed the status of the
+	// readiness probe.
+	if instancesStatus.Len() > 0 {
+		isPostgresReady := instancesStatus.Items[0].IsPostgresqlReady()
+		isPodReady := instancesStatus.Items[0].IsPodReady
+
+		if isPostgresReady && !isPodReady {
+			// The readiness probe status from the Kubelet is not updated, so
+			// we need to wait for it to be refreshed
+			contextLogger.Info(
+				"Waiting for the Kubelet to refresh the readiness probe",
+				"instanceName", instancesStatus.Items[0].Node,
+				"instanceStatus", instancesStatus.Items[0],
+				"isPostgresReady", isPostgresReady,
+				"isPodReady", isPodReady)
+			return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
+		}
+	}
+
 	// We have already updated the status in updateResourceStatus call,
 	// so we need to issue an extra update when the OnlineUpdateEnabled changes.
 	// It's okay because it should not change often.
@@ -258,6 +300,7 @@ func (r *ClusterReconciler) reconcile(ctx context.Context, cluster *apiv1.Cluste
 		if apierrs.IsConflict(err) {
 			// Requeue a new reconciliation cycle, as in this point we need
 			// to quickly react the changes
+			contextLogger.Debug("Conflict error while reconciling online update", "error", err)
 			return ctrl.Result{Requeue: true}, nil
 		}
 
@@ -442,6 +485,7 @@ func (r *ClusterReconciler) reconcileResources(
 	// Reconcile PVC resource requirements
 	if err := r.ReconcilePVCs(ctx, cluster, resources); err != nil {
 		if apierrs.IsConflict(err) {
+			contextLogger.Debug("Conflict error while reconciling PVCs", "error", err)
 			return ctrl.Result{Requeue: true}, nil
 		}
 		return ctrl.Result{}, err
@@ -486,6 +530,7 @@ func (r *ClusterReconciler) deleteEvictedPods(ctx context.Context, cluster *apiv
 				"podStatus", resources.instances.Items[idx].Status)
 			if err := r.Delete(ctx, &resources.instances.Items[idx]); err != nil {
 				if apierrs.IsConflict(err) {
+					contextLogger.Debug("Conflict error while deleting instances item", "error", err)
 					return &ctrl.Result{Requeue: true}, nil
 				}
 				return nil, err
@@ -546,6 +591,10 @@ func (r *ClusterReconciler) ReconcilePVCs(ctx context.Context, cluster *apiv1.Cl
 		return nil
 	}
 
+	// Size is empty would due to size is defined through request and not changed yet
+	if cluster.Spec.StorageConfiguration.Size == "" {
+		return nil
+	}
 	quantity, err := resource.ParseQuantity(cluster.Spec.StorageConfiguration.Size)
 	if err != nil {
 		return fmt.Errorf("while parsing PVC size %v: %w", cluster.Spec.StorageConfiguration.Size, err)
@@ -759,7 +808,7 @@ func (r *ClusterReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manag
 		Owns(&batchv1.Job{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
-		Owns(&policyv1beta1.PodDisruptionBudget{}).
+		Owns(&policyv1.PodDisruptionBudget{}).
 		Watches(
 			&source.Kind{Type: &corev1.ConfigMap{}},
 			handler.EnqueueRequestsFromMapFunc(r.mapConfigMapsToClusters(ctx)),
@@ -1050,7 +1099,7 @@ func (r *ClusterReconciler) mapNodeToClusters(ctx context.Context) handler.MapFu
 		err := r.List(ctx, &childPods,
 			client.MatchingFields{".spec.nodeName": node.Name},
 			client.MatchingLabels{specs.ClusterRoleLabelName: specs.ClusterRoleLabelPrimary},
-			client.HasLabels{specs.ClusterLabelName},
+			client.HasLabels{utils.ClusterLabelName},
 		)
 		if err != nil {
 			log.FromContext(ctx).Error(err, "while getting primary instances for node")

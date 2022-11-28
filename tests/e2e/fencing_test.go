@@ -35,7 +35,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Fencing", func() {
+var _ = Describe("Fencing", Label(tests.LabelPlugin), func() {
 	const (
 		sampleFile = fixturesDir + "/base/cluster-storage-class.yaml.template"
 		level      = tests.Medium
@@ -255,12 +255,10 @@ var _ = Describe("Fencing", func() {
 			// Create a cluster in a namespace we'll delete after the test
 			err = env.CreateNamespace(namespace)
 			Expect(err).ToNot(HaveOccurred())
-
+			DeferCleanup(func() error {
+				return env.DeleteNamespace(namespace)
+			})
 			AssertCreateCluster(namespace, clusterName, sampleFile, env)
-		})
-		AfterAll(func() {
-			err := env.DeleteNamespace(namespace)
-			Expect(err).ToNot(HaveOccurred())
 		})
 		assertFencingPrimaryWorks(testUtils.UsingPlugin)
 		assertFencingFollowerWorks(testUtils.UsingPlugin)
@@ -276,11 +274,10 @@ var _ = Describe("Fencing", func() {
 			// Create a cluster in a namespace we'll delete after the test
 			err = env.CreateNamespace(namespace)
 			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() error {
+				return env.DeleteNamespace(namespace)
+			})
 			AssertCreateCluster(namespace, clusterName, sampleFile, env)
-		})
-		AfterAll(func() {
-			err := env.DeleteNamespace(namespace)
-			Expect(err).ToNot(HaveOccurred())
 		})
 		assertFencingPrimaryWorks(testUtils.UsingAnnotation)
 		assertFencingFollowerWorks(testUtils.UsingAnnotation)

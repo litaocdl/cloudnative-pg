@@ -27,7 +27,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Bootstrap with pg_basebackup using basic auth", func() {
+var _ = Describe("Bootstrap with pg_basebackup using basic auth", Label(tests.LabelRecovery), func() {
 	const (
 		namespace      = "cluster-pg-basebackup-basic-auth"
 		srcCluster     = fixturesDir + "/pg_basebackup/cluster-src.yaml.template"
@@ -43,17 +43,15 @@ var _ = Describe("Bootstrap with pg_basebackup using basic auth", func() {
 		}
 	})
 
-	JustAfterEach(func() {
-		if CurrentSpecReport().Failed() {
-			env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
-		}
-	})
-	AfterEach(func() {
-		err := env.DeleteNamespace(namespace)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	It("can bootstrap with pg_basebackup using basic auth", func() {
+		err := env.CreateNamespace(namespace)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() error {
+			if CurrentSpecReport().Failed() {
+				env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
+			}
+			return env.DeleteNamespace(namespace)
+		})
 		primarySrc := AssertSetupPgBasebackup(namespace, srcClusterName, srcCluster)
 
 		primaryDst := dstClusterName + "-1"
@@ -103,7 +101,7 @@ var _ = Describe("Bootstrap with pg_basebackup using basic auth", func() {
 	})
 })
 
-var _ = Describe("Bootstrap with pg_basebackup using TLS auth", func() {
+var _ = Describe("Bootstrap with pg_basebackup using TLS auth", Label(tests.LabelRecovery), func() {
 	const namespace = "cluster-pg-basebackup-tls-auth"
 
 	const srcCluster = fixturesDir + "/pg_basebackup/cluster-src.yaml.template"
@@ -114,17 +112,15 @@ var _ = Describe("Bootstrap with pg_basebackup using TLS auth", func() {
 
 	const checkQuery = "psql -U postgres app -tAc 'SELECT count(*) FROM to_bootstrap'"
 
-	JustAfterEach(func() {
-		if CurrentSpecReport().Failed() {
-			env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
-		}
-	})
-	AfterEach(func() {
-		err := env.DeleteNamespace(namespace)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	It("can bootstrap with pg_basebackup using TLS auth", func() {
+		err := env.CreateNamespace(namespace)
+		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() error {
+			if CurrentSpecReport().Failed() {
+				env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
+			}
+			return env.DeleteNamespace(namespace)
+		})
 		primarySrc := AssertSetupPgBasebackup(namespace, srcClusterName, srcCluster)
 
 		primaryDst := dstClusterName + "-1"

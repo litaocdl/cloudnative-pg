@@ -35,7 +35,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Update user and superuser password", func() {
+var _ = Describe("Update user and superuser password", Label(tests.LabelServiceConnectivity), func() {
 	const (
 		namespace   = "cluster-update-user-password"
 		sampleFile  = fixturesDir + "/base/cluster-basic.yaml"
@@ -49,21 +49,17 @@ var _ = Describe("Update user and superuser password", func() {
 		}
 	})
 
-	JustAfterEach(func() {
-		if CurrentSpecReport().Failed() {
-			env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
-		}
-	})
-	AfterEach(func() {
-		err := env.DeleteNamespace(namespace)
-		Expect(err).ToNot(HaveOccurred())
-	})
-
 	It("can update the user application password", func() {
 		const namespace = "cluster-update-user-password"
 		// Create a cluster in a namespace we'll delete after the test
 		err := env.CreateNamespace(namespace)
 		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() error {
+			if CurrentSpecReport().Failed() {
+				env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
+			}
+			return env.DeleteNamespace(namespace)
+		})
 		AssertCreateCluster(namespace, clusterName, sampleFile, env)
 
 		rwService := fmt.Sprintf("%v-rw.%v.svc", clusterName, namespace)
@@ -115,26 +111,22 @@ var _ = Describe("Update user and superuser password", func() {
 	})
 })
 
-var _ = Describe("Disabling superuser password", func() {
+var _ = Describe("Disabling superuser password", Label(tests.LabelServiceConnectivity), func() {
 	const namespace = "cluster-superuser-enable"
 	const sampleFile = fixturesDir + "/base/cluster-basic.yaml"
 	const clusterName = "cluster-basic"
-
-	JustAfterEach(func() {
-		if CurrentSpecReport().Failed() {
-			env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
-		}
-	})
-	AfterEach(func() {
-		err := env.DeleteNamespace(namespace)
-		Expect(err).ToNot(HaveOccurred())
-	})
 
 	It("enable disable superuser access", func() {
 		var secret corev1.Secret
 		// Create a cluster in a namespace we'll delete after the test
 		err := env.CreateNamespace(namespace)
 		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() error {
+			if CurrentSpecReport().Failed() {
+				env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
+			}
+			return env.DeleteNamespace(namespace)
+		})
 		AssertCreateCluster(namespace, clusterName, sampleFile, env)
 		// we use a pod in the cluster to have a psql client ready and
 		// internal access to the k8s cluster
@@ -223,20 +215,10 @@ var _ = Describe("Disabling superuser password", func() {
 	})
 })
 
-var _ = Describe("Creating a cluster without superuser password", func() {
+var _ = Describe("Creating a cluster without superuser password", Label(tests.LabelServiceConnectivity), func() {
 	const namespace = "no-postgres-pwd"
 	const sampleFile = fixturesDir + "/secrets/cluster-no-postgres-pwd.yaml.template"
 	const clusterName = "cluster-no-postgres-pwd"
-
-	JustAfterEach(func() {
-		if CurrentSpecReport().Failed() {
-			env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
-		}
-	})
-	AfterEach(func() {
-		err := env.DeleteNamespace(namespace)
-		Expect(err).ToNot(HaveOccurred())
-	})
 
 	It("create a cluster without postgres password", func() {
 		var secret corev1.Secret
@@ -246,6 +228,12 @@ var _ = Describe("Creating a cluster without superuser password", func() {
 		// Create a cluster in a namespace we'll delete after the test
 		err := env.CreateNamespace(namespace)
 		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() error {
+			if CurrentSpecReport().Failed() {
+				env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
+			}
+			return env.DeleteNamespace(namespace)
+		})
 		AssertCreateCluster(namespace, clusterName, sampleFile, env)
 		// we use a pod in the cluster to have a psql client ready and
 		// internal access to the k8s cluster

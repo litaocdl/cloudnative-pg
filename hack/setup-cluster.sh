@@ -24,7 +24,7 @@ if [ "${DEBUG-}" = true ]; then
 fi
 
 # Defaults
-K8S_VERSION=${K8S_VERSION:-v1.24.2}
+K8S_VERSION=${K8S_VERSION:-v1.25.0}
 KUBECTL_VERSION=${KUBECTL_VERSION:-$K8S_VERSION}
 ENGINE=${CLUSTER_ENGINE:-kind}
 ENABLE_REGISTRY=${ENABLE_REGISTRY:-}
@@ -403,6 +403,7 @@ Commands:
     prepare <dest_dir>    Downloads the prerequisite into <dest_dir>
     create                Create the test cluster
     load                  Build and load the operator image in the cluster
+    load-helper-images    Load the catalog of HELPER_IMGS into the local registry
     deploy                Deploy the operator manifests in the cluster
     print-image           Print the CONTROLLER_IMG name to be used inside
                           the cluster
@@ -419,7 +420,7 @@ Options:
 
     -k|--k8s-version
         <K8S_VERSION>     Use the specified kubernetes full version number
-                          (e.g., v1.24.2). Env: K8S_VERSION
+                          (e.g., v1.25.0). Env: K8S_VERSION
 
     -n|--nodes
         <NODES>           Create a cluster with the required number of nodes.
@@ -459,8 +460,6 @@ create() {
   fi
 
   deploy_fluentd
-
-  load_helper_images
 
   echo "${bright}Done creating ${ENGINE} cluster ${CLUSTER_NAME} with version ${K8S_VERSION}${reset}"
 }
@@ -623,7 +622,7 @@ main() {
       prepare "${dest_dir}"
       ;;
 
-    create | load | deploy | print-image | export-logs | destroy | pyroscope)
+    create | load | load-helper-images | deploy | print-image | export-logs | destroy | pyroscope)
       ensure_registry
       "${command//-/_}"
       ;;

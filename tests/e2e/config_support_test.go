@@ -19,6 +19,7 @@ package e2e
 import (
 	"fmt"
 
+	"github.com/onsi/ginkgo/v2/types"
 	corev1 "k8s.io/api/core/v1"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -31,7 +32,7 @@ import (
 
 // Set of tests for config map for the operator. It is useful to configure the operator globally to survive
 // the upgrades (especially in OLM installation like OpenShift).
-var _ = Describe("Config support", Serial, Ordered, Label(tests.LabelDisruptive), func() {
+var _ = Describe("Config support", Serial, Ordered, Label(tests.LabelDisruptive, tests.LabelClusterMetadata), func() {
 	const (
 		clusterWithInheritedLabelsFile = fixturesDir + "/configmap-support/config-support.yaml.template"
 		configMapFile                  = fixturesDir + "/configmap-support/configmap.yaml"
@@ -60,12 +61,12 @@ var _ = Describe("Config support", Serial, Ordered, Label(tests.LabelDisruptive)
 	})
 
 	AfterAll(func() {
-		err := env.DeleteNamespace(namespace)
-		Expect(err).ToNot(HaveOccurred())
-
+		if CurrentSpecReport().State.Is(types.SpecStateSkipped) {
+			return
+		}
 		// Delete the configmap and restore the previous behaviour
 		configMap := &corev1.ConfigMap{}
-		err = env.Client.Get(env.Ctx, ctrlclient.ObjectKey{Namespace: operatorNamespace, Name: configName}, configMap)
+		err := env.Client.Get(env.Ctx, ctrlclient.ObjectKey{Namespace: operatorNamespace, Name: configName}, configMap)
 		Expect(err).ToNot(HaveOccurred())
 		err = env.Client.Delete(env.Ctx, configMap)
 		Expect(err).NotTo(HaveOccurred())
@@ -119,6 +120,9 @@ var _ = Describe("Config support", Serial, Ordered, Label(tests.LabelDisruptive)
 	It("creates a cluster", func() {
 		err := env.CreateNamespace(namespace)
 		Expect(err).ToNot(HaveOccurred())
+		DeferCleanup(func() error {
+			return env.DeleteNamespace(namespace)
+		})
 
 		// Create the curl client pod and wait for it to be ready.
 		By("setting up curl client pod", func() {

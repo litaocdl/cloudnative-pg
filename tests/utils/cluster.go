@@ -18,16 +18,22 @@ package utils
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"text/tabwriter"
 
+	"github.com/cheynewallace/tabby"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	"github.com/cloudnative-pg/cloudnative-pg/pkg/utils"
+	"github.com/cloudnative-pg/cloudnative-pg/pkg/utils/logs"
 )
 
 // AllClusterPodsHaveLabels verifies if the labels defined in a map are included
@@ -114,6 +120,39 @@ func ClusterHasAnnotations(
 	return true
 }
 
+// DumpOperatorLogs dumps the operator logs to a file, and returns the log lines
+// as a slice.
+func (env TestingEnvironment) DumpOperatorLogs(getPrevious bool, requestedLineLength int) ([]string, error) {
+	pod, err := env.GetOperatorPod()
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	filename := "out/operator_report_" + pod.Name + ".log"
+	if getPrevious {
+		filename = "out/operator_report_previous_" + pod.Name + ".log"
+	}
+	f, err := os.Create(filepath.Clean(filename))
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	defer func() {
+		syncErr := f.Sync()
+		if err == nil && syncErr != nil {
+			err = syncErr
+		}
+		closeErr := f.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+
+	_, _ = fmt.Fprintf(f, "Dumping operator pod %v log\n", pod.Name)
+	return logs.GetPodLogs(env.Ctx, pod, getPrevious, f, requestedLineLength)
+}
+
 // DumpNamespaceObjects logs the clusters, pods, pvcs etc. found in a namespace as JSON sections
 func (env TestingEnvironment) DumpNamespaceObjects(namespace string, filename string) {
 	f, err := os.Create(filepath.Clean(filename))
@@ -121,6 +160,10 @@ func (env TestingEnvironment) DumpNamespaceObjects(namespace string, filename st
 		fmt.Println(err)
 		return
 	}
+	defer func() {
+		_ = f.Sync()
+		_ = f.Close()
+	}()
 	w := bufio.NewWriter(f)
 	clusterList := &apiv1.ClusterList{}
 	_ = GetObjectList(&env, clusterList, client.InNamespace(namespace))
@@ -200,8 +243,6 @@ func (env TestingEnvironment) DumpNamespaceObjects(namespace string, filename st
 		fmt.Println(err)
 		return
 	}
-	_ = f.Sync()
-	_ = f.Close()
 }
 
 // GetCluster gets a cluster given name and namespace
@@ -243,6 +284,22 @@ func (env TestingEnvironment) GetClusterPrimary(namespace string, clusterName st
 	return &corev1.Pod{}, err
 }
 
+// GetClusterReplicas gets a slice containing all the replica pods of a cluster
+func (env TestingEnvironment) GetClusterReplicas(namespace string, clusterName string) (*corev1.PodList, error) {
+	podList := &corev1.PodList{}
+	err := GetObjectList(&env, podList, client.InNamespace(namespace),
+		client.MatchingLabels{"postgresql": clusterName, "role": "replica"},
+	)
+	if err != nil {
+		return podList, err
+	}
+	if len(podList.Items) > 0 {
+		return podList, nil
+	}
+	err = fmt.Errorf("no replicas found")
+	return podList, err
+}
+
 // ScaleClusterSize scales a cluster to the requested size
 func (env TestingEnvironment) ScaleClusterSize(namespace, clusterName string, newClusterSize int) error {
 	cluster, err := env.GetCluster(namespace, clusterName)
@@ -256,4 +313,103 @@ func (env TestingEnvironment) ScaleClusterSize(namespace, clusterName string, ne
 		return err
 	}
 	return nil
+}
+
+// PrintClusterResources prints a summary of the cluster pods, jobs, pvcs etc.
+func PrintClusterResources(namespace, clusterName string, env *TestingEnvironment) string {
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      clusterName,
+	}
+	cluster := &apiv1.Cluster{}
+	err := GetObject(env, namespacedName, cluster)
+	if err != nil {
+		return fmt.Sprintf("Error while Getting Object %v", err)
+	}
+
+	buffer := &bytes.Buffer{}
+	w := tabwriter.NewWriter(buffer, 0, 0, 4, ' ', 0)
+	clusterInfo := tabby.NewCustom(w)
+	clusterInfo.AddLine("Timeout while waiting for cluster ready, dumping more cluster information for analysis...")
+	clusterInfo.AddLine()
+	clusterInfo.AddLine()
+	clusterInfo.AddLine("Cluster information:")
+	clusterInfo.AddLine("Name", cluster.GetName())
+	clusterInfo.AddLine("Namespace", cluster.GetNamespace())
+	clusterInfo.AddLine()
+	clusterInfo.AddHeader("Items", "Values")
+	clusterInfo.AddLine("Spec.Instances", cluster.Spec.Instances)
+	clusterInfo.AddLine("Wal storage", cluster.ShouldCreateWalArchiveVolume())
+	clusterInfo.AddLine("Cluster phase", cluster.Status.Phase)
+	clusterInfo.AddLine("Phase reason", cluster.Status.PhaseReason)
+	clusterInfo.AddLine("Cluster target primary", cluster.Status.TargetPrimary)
+	clusterInfo.AddLine("Cluster current primary", cluster.Status.CurrentPrimary)
+	clusterInfo.AddLine()
+
+	podList, _ := env.GetClusterPodList(cluster.GetNamespace(), cluster.GetName())
+
+	clusterInfo.AddLine("Cluster Pods information:")
+	clusterInfo.AddLine("Ready pod number: ", utils.CountReadyPods(podList.Items))
+	clusterInfo.AddLine()
+	clusterInfo.AddHeader("Items", "Values")
+	for _, pod := range podList.Items {
+		clusterInfo.AddLine("Pod name", pod.Name)
+		clusterInfo.AddLine("Pod phase", pod.Status.Phase)
+		if cluster.Status.InstancesReportedState != nil {
+			if instanceReportState, ok := cluster.Status.InstancesReportedState[apiv1.PodName(pod.Name)]; ok {
+				clusterInfo.AddLine("Is Primary", instanceReportState.IsPrimary)
+				clusterInfo.AddLine("TimeLineID", instanceReportState.TimeLineID)
+				clusterInfo.AddLine("---", "---")
+			}
+		} else {
+			clusterInfo.AddLine("InstanceReportState not exit", "")
+		}
+	}
+
+	clusterInfo.AddLine("Jobs information:")
+	clusterInfo.AddLine()
+	clusterInfo.AddHeader("Items", "Values")
+	jobList, _ := env.GetJobList(cluster.GetNamespace())
+	for _, job := range jobList.Items {
+		clusterInfo.AddLine("Job name", job.Name)
+		clusterInfo.AddLine("Job status", fmt.Sprintf("%#v", job.Status))
+	}
+
+	pvcList, _ := env.GetPVCList(cluster.GetNamespace())
+	clusterInfo.AddLine()
+	clusterInfo.AddLine("Cluster PVC information: (dumping all pvc under the namespace)")
+	clusterInfo.AddLine("Available PVCCount", cluster.Status.PVCCount)
+	clusterInfo.AddLine()
+	clusterInfo.AddHeader("Items", "Values")
+	for _, pvc := range pvcList.Items {
+		clusterInfo.AddLine("PVC name", pvc.Name)
+		clusterInfo.AddLine("PVC phase", pvc.Status.Phase)
+		clusterInfo.AddLine("---", "---")
+	}
+
+	// do not remove, this is needed to ensure that the writer cache is always flushed.
+	clusterInfo.Print()
+
+	return buffer.String()
+}
+
+// DescribeKubernetesNodes prints the `describe node` for each node in the
+// kubernetes cluster
+func (env TestingEnvironment) DescribeKubernetesNodes() (string, error) {
+	nodeList, err := env.GetNodeList()
+	if err != nil {
+		return "", err
+	}
+	var report strings.Builder
+	for _, node := range nodeList.Items {
+		command := fmt.Sprintf("kubectl describe node %v", node.Name)
+		stdout, _, err := Run(command)
+		if err != nil {
+			return "", err
+		}
+		report.WriteString("================================================\n")
+		report.WriteString(stdout)
+		report.WriteString("================================================\n")
+	}
+	return report.String(), nil
 }

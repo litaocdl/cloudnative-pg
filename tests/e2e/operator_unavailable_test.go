@@ -36,7 +36,7 @@ import (
 // Set of tests in which we test the concurrent disruption of both the primary
 // and the operator pods, asserting that the latter is able to perform a pending
 // failover once a new operator pod comes back available.
-var _ = Describe("Operator unavailable", Serial, Label(tests.LabelDisruptive), func() {
+var _ = Describe("Operator unavailable", Serial, Label(tests.LabelDisruptive, tests.LabelOperator), func() {
 	const (
 		clusterName = "operator-unavailable"
 		sampleFile  = fixturesDir + "/operator-unavailable/operator-unavailable.yaml.template"
@@ -56,14 +56,13 @@ var _ = Describe("Operator unavailable", Serial, Label(tests.LabelDisruptive), f
 				env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
 			}
 		})
-		AfterEach(func() {
-			err := env.DeleteNamespace(namespace)
-			Expect(err).ToNot(HaveOccurred())
-		})
 		It("can survive operator failures", func() {
 			// Create the cluster namespace
 			err := env.CreateNamespace(namespace)
 			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() error {
+				return env.DeleteNamespace(namespace)
+			})
 			AssertCreateCluster(namespace, clusterName, sampleFile, env)
 
 			// Load test data
@@ -169,15 +168,14 @@ var _ = Describe("Operator unavailable", Serial, Label(tests.LabelDisruptive), f
 				env.DumpNamespaceObjects(namespace, "out/"+CurrentSpecReport().LeafNodeText+".log")
 			}
 		})
-		AfterEach(func() {
-			err := env.DeleteNamespace(namespace)
-			Expect(err).ToNot(HaveOccurred())
-		})
 		It("can survive operator failures", func() {
 			var operatorPodName string
 			// Create the cluster namespace
 			err := env.CreateNamespace(namespace)
 			Expect(err).ToNot(HaveOccurred())
+			DeferCleanup(func() error {
+				return env.DeleteNamespace(namespace)
+			})
 			AssertCreateCluster(namespace, clusterName, sampleFile, env)
 
 			// Load test data

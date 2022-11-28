@@ -7,21 +7,57 @@
 The operator can be installed like any other resource in Kubernetes,
 through a YAML manifest applied via `kubectl`.
 
-You can install the [latest operator manifest](https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.17/releases/cnpg-1.17.0.yaml)
-as follows:
+You can install the [latest operator manifest](https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.18/releases/cnpg-1.18.0.yaml)
+for this minor release as follows:
 
 ```sh
 kubectl apply -f \
-  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.17/releases/cnpg-1.17.0.yaml
+  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.18/releases/cnpg-1.18.0.yaml
 ```
-
-Once you have run the `kubectl` command, CloudNativePG will be installed in your Kubernetes cluster.
 
 You can verify that with:
 
 ```sh
 kubectl get deploy -n cnpg-system cnpg-controller-manager
 ```
+
+### Using the `cnpg` plugin for `kubectl`
+
+You can use the `cnpg` plugin to override the default configuration options
+that are in the static manifests. 
+
+For example, to generate the default latest manifest but change the watch
+namespaces to only be a specific namespace, you could run:
+
+```shell
+kubectl cnpg install generate \
+  --watch-namespaces "specific-namespace" \
+  > cnpg_for_specific_namespace.yaml
+```
+
+Please refer to ["`cnpg` plugin"](./cnpg-plugin.md#generation-of-installation-manifests) documentation
+for a more comprehensive example. 
+
+#### Testing the latest development snapshot
+
+If you want to test or evaluate the latest development snapshot of
+CloudNativePG before the next official patch release, you can download the
+manifests from the
+[`cloudnative-pg/artifacts`](https://github.com/cloudnative-pg/artifacts)
+which provides easy access to the current trunk (main) as well as to each
+supported release.
+
+For example, you can install the latest snapshot of the operator for
+this minor release with:
+
+```sh
+curl -sSfL \
+  https://raw.githubusercontent.com/cloudnative-pg/artifacts/release-1.18/manifests/operator-manifest.yaml | \
+  kubectl apply -f -
+```
+
+!!! Important
+    Snapshots are not supported by the CloudNativePG and not intended for production usage.
 
 ### Using the Helm Chart
 

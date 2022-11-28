@@ -17,13 +17,28 @@ limitations under the License.
 package utils
 
 import (
+	"fmt"
+	"regexp"
+	"strconv"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/discovery"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-// This variable store the result of the DetectSecurityContextConstraints check
+// This variable stores the result of the DetectSecurityContextConstraints check
 var haveSCC bool
+
+// This variable specifies whether we should set the SeccompProfile or not in the pods
+var supportSeccomp bool
+
+// `minorVersionRegexp` is used to extract the minor version from
+// the Kubernetes API server version. Some providers, like AWS,
+// append a "+" to the Kubernetes minor version to presumably
+// indicate that some maintenance patches have been back-ported
+// beyond the standard end-of-life of the release.
+var minorVersionRegexp = regexp.MustCompile(`^([0-9]+)\+?$`)
 
 // GetDiscoveryClient creates a discovery client or return error
 func GetDiscoveryClient() (*discovery.DiscoveryClient, error) {
@@ -85,4 +100,43 @@ func PodMonitorExist(client *discovery.DiscoveryClient) (bool, error) {
 	}
 
 	return exist, nil
+}
+
+// HaveSeccompSupport returns true if Seccomp is supported. If it is, we should
+// set the SeccompProfile in the pods
+func HaveSeccompSupport() bool {
+	return supportSeccomp
+}
+
+// extractK8sMinorVersion extracts and parses the Kubernetes minor version from
+// the version info that's been  detected by discovery client
+func extractK8sMinorVersion(info *version.Info) (int, error) {
+	matches := minorVersionRegexp.FindStringSubmatch(info.Minor)
+	if matches == nil {
+		// we couldn't detect the minor version of Kubernetes
+		return 0, fmt.Errorf("invalid Kubernetes minor version: %s", info.Minor)
+	}
+
+	return strconv.Atoi(matches[1])
+}
+
+// DetectSeccompSupport checks the version of Kubernetes in the cluster to determine
+// whether Seccomp is supported
+func DetectSeccompSupport(client *discovery.DiscoveryClient) (err error) {
+	supportSeccomp = false
+	kubernetesVersion, err := client.ServerVersion()
+	if err != nil {
+		return err
+	}
+
+	minor, err := extractK8sMinorVersion(kubernetesVersion)
+	if err != nil {
+		return err
+	}
+
+	if minor >= 24 {
+		supportSeccomp = true
+	}
+
+	return
 }

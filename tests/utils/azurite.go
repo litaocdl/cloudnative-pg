@@ -22,8 +22,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/pointer"
 
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/certs"
+	"github.com/cloudnative-pg/cloudnative-pg/pkg/utils"
 )
 
 const (
@@ -103,6 +105,13 @@ func InstallAzCli(namespace string, env *TestingEnvironment) error {
 
 // getAzuriteClientPod get the cli client pod
 func getAzuriteClientPod(namespace string) corev1.Pod {
+	seccompProfile := &corev1.SeccompProfile{
+		Type: corev1.SeccompProfileTypeRuntimeDefault,
+	}
+	if !utils.HaveSeccompSupport() {
+		seccompProfile = nil
+	}
+
 	cliClientPod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "az-cli",
@@ -131,12 +140,24 @@ func getAzuriteClientPod(namespace string) corev1.Pod {
 							Name:  "REQUESTS_CA_BUNDLE",
 							Value: "/etc/ssl/certs/rootCA.pem",
 						},
+						{
+							Name:  "HOME",
+							Value: "/azurite",
+						},
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "cert",
 							MountPath: "/etc/ssl/certs",
 						},
+						{
+							Name:      "azurite",
+							MountPath: "/azurite",
+						},
+					},
+					SecurityContext: &corev1.SecurityContext{
+						AllowPrivilegeEscalation: pointer.Bool(false),
+						SeccompProfile:           seccompProfile,
 					},
 				},
 			},
@@ -155,6 +176,15 @@ func getAzuriteClientPod(namespace string) corev1.Pod {
 						},
 					},
 				},
+				{
+					Name: "azurite",
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
+					},
+				},
+			},
+			SecurityContext: &corev1.PodSecurityContext{
+				SeccompProfile: seccompProfile,
 			},
 		},
 	}
@@ -188,6 +218,13 @@ func getAzuriteService(namespace string) corev1.Service {
 // getAzuriteDeployment get the deployment for Azurite
 func getAzuriteDeployment(namespace string) apiv1.Deployment {
 	replicas := int32(1)
+	seccompProfile := &corev1.SeccompProfile{
+		Type: corev1.SeccompProfileTypeRuntimeDefault,
+	}
+	if !utils.HaveSeccompSupport() {
+		seccompProfile = nil
+	}
+
 	azuriteDeployment := apiv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "azurite",
@@ -242,6 +279,10 @@ func getAzuriteDeployment(namespace string) apiv1.Deployment {
 									Name:      "cert",
 								},
 							},
+							SecurityContext: &corev1.SecurityContext{
+								AllowPrivilegeEscalation: pointer.Bool(false),
+								SeccompProfile:           seccompProfile,
+							},
 						},
 					},
 					Volumes: []corev1.Volume{
@@ -269,6 +310,9 @@ func getAzuriteDeployment(namespace string) apiv1.Deployment {
 								},
 							},
 						},
+					},
+					SecurityContext: &corev1.PodSecurityContext{
+						SeccompProfile: seccompProfile,
 					},
 				},
 			},

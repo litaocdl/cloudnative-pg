@@ -58,7 +58,7 @@ All flags have corresponding environment variables labeled `(Env:...` in the tab
 |--------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
 | -r\|--registry                       | Enable local registry. (Env: `ENABLE_REGISTRY`)                                                                               |
 | -e\|--engine <CLUSTER_ENGINE>        | Use the provided ENGINE to run the cluster. Available options are 'kind' and 'k3d'. Default 'kind'. (Env: `CLUSTER_ENGINE`)   |
-| -k\|--k8s-version <K8S_VERSION>      | Use the specified Kubernetes full version number (e.g., `-k v1.24.2`). (Env: `K8S_VERSION`)                                   |
+| -k\|--k8s-version <K8S_VERSION>      | Use the specified Kubernetes full version number (e.g., `-k v1.25.0`). (Env: `K8S_VERSION`)                                   |
 | -n\|--nodes <NODES>                  | Create a cluster with the required number of nodes. Used only during "create" command. Default: 3 (Env: `NODES`)              |
 
 
@@ -85,6 +85,8 @@ The script can be configured through the following environment variables:
    blob storage
 * `AZURE_STORAGE_KEY`: Azure storage key to test backup and restore, using Barman Cloud on Azure
   blob storage
+* `FEATURE_TYPE`: Feature type key to run e2e based on feature labels.Ex: smoke, basic, security... details
+  can be fetched from labels file [`tests/labels.go`](../../../tests/labels.go)
 
 If the `CONTROLLER_IMG` is in a private registry, you'll also need to define
 the following variables to create a pull secret:
@@ -111,6 +113,42 @@ There are currently two available scripts that wrap setup of the cluster and
 execution of tests. One is for `kind` and one is for `k3d`. They simply embed
 `hack/setup-cluster.sh` and `hack/e2e/run-e2e.sh` to create a local Kubernetes
 cluster and then run E2E tests on it.
+
+### Using feature type test selection/filter
+
+All the current test cases are labelled with features. Which can be selected
+by exporting value `FEATURE_TYPE` and running any script. By default, if test level is not
+exported, it will select all medium test cases from the feature type provided.
+
+| Currently Available Feature Types |
+|-----------------------------------|
+| `disruptive`                      |
+| `performance`                     |
+| `upgrade`                         |
+| `smoke`                           |
+| `basic`                           |
+| `service-connectivity`            |
+| `self-healing`                    |
+| `backup-restore`                  |
+| `operator`                        |
+| `observability`                   |
+| `replication`                     |
+| `plugin`                          |
+| `postgres-configuration`          |
+| `pod-scheduling`                  |
+| `cluster-metadata`                |
+| `recovery`                        |
+| `importing-databases`             |
+| `storage`                         |
+| `security`                        |
+| `maintenance`                     |
+
+ex:
+```shell
+export FEATURE_TYPE=smoke,basic,service-connectivity
+```
+This will run smoke, basic and service connectivity e2e.
+One or many can be passed as value with comma separation without spaces.
 
 #### On kind
 
@@ -160,7 +198,7 @@ the following ones can be defined:
   Default: `false`
 * `PRESERVE_NAMESPACES`: space separated list of namespace to be kept after
   the tests. Only useful if specified with `PRESERVE_CLUSTER=true`
-* `K8S_VERSION`: the version of K8s to run. Default: `v1.24.2`
+* `K8S_VERSION`: the version of K8s to run. Default: `v1.25.0`
 * `KIND_VERSION`: the version of `kind`. Defaults to the latest release
 * `BUILD_IMAGE`: true to build the Dockerfile and load it on kind,
   false to get the image from a registry. Default: `false`

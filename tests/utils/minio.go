@@ -30,9 +30,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/cloudnative-pg/cloudnative-pg/pkg/postgres"
+	"github.com/cloudnative-pg/cloudnative-pg/pkg/utils"
 )
 
 const (
@@ -112,6 +114,13 @@ func MinioDefaultSetup(namespace string) (MinioSetup, error) {
 
 // MinioDefaultDeployment returns a default Deployment for minio
 func MinioDefaultDeployment(namespace string, minioPVC corev1.PersistentVolumeClaim) appsv1.Deployment {
+	seccompProfile := &corev1.SeccompProfile{
+		Type: corev1.SeccompProfileTypeRuntimeDefault,
+	}
+	if !utils.HaveSeccompSupport() {
+		seccompProfile = nil
+	}
+
 	minioDeployment := appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "minio",
@@ -186,7 +195,14 @@ func MinioDefaultDeployment(namespace string, minioPVC corev1.PersistentVolumeCl
 								},
 								InitialDelaySeconds: 30,
 							},
+							SecurityContext: &corev1.SecurityContext{
+								AllowPrivilegeEscalation: pointer.Bool(false),
+								SeccompProfile:           seccompProfile,
+							},
 						},
+					},
+					SecurityContext: &corev1.PodSecurityContext{
+						SeccompProfile: seccompProfile,
 					},
 				},
 			},
@@ -316,6 +332,13 @@ func MinioSSLSetup(namespace string) (MinioSetup, error) {
 
 // MinioDefaultClient returns the default Pod definition for a minio client
 func MinioDefaultClient(namespace string) corev1.Pod {
+	seccompProfile := &corev1.SeccompProfile{
+		Type: corev1.SeccompProfileTypeRuntimeDefault,
+	}
+	if !utils.HaveSeccompSupport() {
+		seccompProfile = nil
+	}
+
 	minioClient := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
@@ -323,6 +346,14 @@ func MinioDefaultClient(namespace string) corev1.Pod {
 			Labels:    map[string]string{"run": "mc"},
 		},
 		Spec: corev1.PodSpec{
+			Volumes: []corev1.Volume{
+				{
+					Name: "mc",
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
+					},
+				},
+			},
 			Containers: []corev1.Container{
 				{
 					Name:  "mc",
@@ -336,9 +367,26 @@ func MinioDefaultClient(namespace string) corev1.Pod {
 							Name:  "MC_URL",
 							Value: "https://minio-service:9000",
 						},
+						{
+							Name:  "HOME",
+							Value: "/mc",
+						},
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "mc",
+							MountPath: "/mc",
+						},
+					},
+					SecurityContext: &corev1.SecurityContext{
+						AllowPrivilegeEscalation: pointer.Bool(false),
+						SeccompProfile:           seccompProfile,
 					},
 					Command: []string{"sleep", "3600"},
 				},
+			},
+			SecurityContext: &corev1.PodSecurityContext{
+				SeccompProfile: seccompProfile,
 			},
 			DNSPolicy:     corev1.DNSClusterFirst,
 			RestartPolicy: corev1.RestartPolicyAlways,
@@ -352,7 +400,7 @@ func MinioSSLClient(namespace string) corev1.Pod {
 	const (
 		minioServerCASecret = "minio-server-ca-secret" // #nosec
 		tlsVolumeName       = "secret-volume"
-		tlsVolumeMountPath  = "/root/.mc/certs/CAs"
+		tlsVolumeMountPath  = "/mc/.mc/certs/CAs"
 	)
 	var secretMode int32 = 0o600
 

@@ -215,6 +215,7 @@ func AssertClusterIsReady(namespace string, clusterName string, timeout int, env
 			g.Expect(err).ToNot(HaveOccurred())
 		}).Should(Succeed())
 
+		start := time.Now()
 		Eventually(func() (string, error) {
 			podList, err := env.GetClusterPodList(namespace, clusterName)
 			if err != nil {
@@ -224,10 +225,17 @@ func AssertClusterIsReady(namespace string, clusterName string, timeout int, env
 				err = env.Client.Get(env.Ctx, namespacedName, cluster)
 				return cluster.Status.Phase, err
 			}
-			return fmt.Sprintf("spec Instances: %d, ready pods: %d",
+			return fmt.Sprintf("Ready pod is not as expected. Spec Instances: %d, ready pods: %d \n",
 				cluster.Spec.Instances,
 				utils.CountReadyPods(podList.Items)), nil
-		}, timeout, 2).Should(BeEquivalentTo(apiv1.PhaseHealthy))
+		}, timeout, 2).Should(BeEquivalentTo(apiv1.PhaseHealthy),
+			func() string {
+				cluster := testsUtils.PrintClusterResources(namespace, clusterName, env)
+				nodes, _ := env.DescribeKubernetesNodes()
+				return fmt.Sprintf("CLUSTER STATE\n%s\n\nK8S NODES\n%s",
+					cluster, nodes)
+			})
+		GinkgoWriter.Println("Cluster ready, took", time.Since(start))
 	})
 }
 
@@ -910,10 +918,7 @@ func AssertFastFailOver(
 	maxReattachTime,
 	maxFailoverTime int32,
 ) {
-	// Create a cluster in a namespace we'll delete after the test
-	err := env.CreateNamespace(namespace)
-	Expect(err).ToNot(HaveOccurred())
-
+	var err error
 	By(fmt.Sprintf("having a %v namespace", namespace), func() {
 		// Creating a namespace should be quick
 		timeout := 20
@@ -1209,15 +1214,12 @@ func AssertSSLVerifyFullDBConnectionFromAppPod(namespace string, clusterName str
 
 func AssertSetupPgBasebackup(namespace, srcClusterName, srcCluster string) string {
 	primarySrc := srcClusterName + "-1"
-	// Create a cluster in a namespace we'll delete after the test
-	err := env.CreateNamespace(namespace)
-	Expect(err).ToNot(HaveOccurred())
 
 	// Create the src Cluster
 	AssertCreateCluster(namespace, srcClusterName, srcCluster, env)
 
 	cmd := "psql -U postgres app -tAc 'CREATE TABLE to_bootstrap AS VALUES (1), (2);'"
-	_, _, err = testsUtils.Run(fmt.Sprintf(
+	_, _, err := testsUtils.Run(fmt.Sprintf(
 		"kubectl exec -n %v %v -- %v",
 		namespace,
 		primarySrc,
@@ -2468,4 +2470,116 @@ func AssertPvcHasLabels(
 			}
 		}, 300, 5).Should(Succeed())
 	})
+}
+
+// AssertReplicationSlotsOnPod checks that all the required replication slots exist in a given pod,
+// and that obsolete slots are correctly deleted (post management operations).
+// In the primary, it will also check if the slots are active.
+func AssertReplicationSlotsOnPod(
+	namespace,
+	clusterName string,
+	pod corev1.Pod,
+) {
+	// Replication slot high availability requires PostgreSQL 11 or above
+	if env.PostgresVersion == 10 {
+		Skip("Ignoring replication slots verification for postgres 10")
+		return
+	}
+
+	expectedSlots, err := testsUtils.GetExpectedReplicationSlotsOnPod(namespace, clusterName, pod.GetName(), env)
+	Expect(err).ToNot(HaveOccurred())
+
+	Eventually(func() ([]string, error) {
+		currentSlots, err := testsUtils.GetReplicationSlotsOnPod(namespace, pod.GetName(), env)
+		return currentSlots, err
+	}, 300).Should(BeEquivalentTo(expectedSlots),
+		func() string {
+			return testsUtils.PrintReplicationSlots(namespace, clusterName, env)
+		})
+
+	for _, slot := range expectedSlots {
+		query := fmt.Sprintf(
+			"SELECT EXISTS (SELECT 1 FROM pg_replication_slots "+
+				"WHERE slot_name = '%v' AND active = 'f' "+
+				"AND temporary = 'f' AND slot_type = 'physical')", slot)
+		if specs.IsPodPrimary(pod) {
+			query = fmt.Sprintf(
+				"SELECT EXISTS (SELECT 1 FROM pg_replication_slots "+
+					"WHERE slot_name = '%v' AND active = 't' "+
+					"AND temporary = 'f' AND slot_type = 'physical')", slot)
+		}
+		Eventually(func() (string, error) {
+			stdout, _, err := testsUtils.RunQueryFromPod(&pod, testsUtils.PGLocalSocketDir,
+				"app", "postgres", "''", query, env)
+			return strings.TrimSpace(stdout), err
+		}, 300).Should(BeEquivalentTo("t"),
+			func() string {
+				return testsUtils.PrintReplicationSlots(namespace, clusterName, env)
+			})
+	}
+}
+
+// AssertClusterReplicationSlotsAligned will compare all the replication slot restart_lsn
+// in a cluster. The assertion will succeed if they are all equivalent.
+func AssertClusterReplicationSlotsAligned(
+	namespace,
+	clusterName string,
+) {
+	// Replication slot high availability requires PostgreSQL 11 or above
+	if env.PostgresVersion == 10 {
+		Skip("Ignoring replication slots verification for postgres 10")
+	}
+
+	podList, err := env.GetClusterPodList(namespace, clusterName)
+	Expect(err).ToNot(HaveOccurred())
+	Eventually(func() bool {
+		var lsnList []string
+		for _, pod := range podList.Items {
+			out, err := testsUtils.GetReplicationSlotLsnsOnPod(namespace, clusterName, pod, env)
+			Expect(err).ToNot(HaveOccurred())
+			lsnList = append(lsnList, out...)
+		}
+		return testsUtils.AreSameLsn(lsnList)
+	}, 300).Should(BeEquivalentTo(true),
+		func() string {
+			return testsUtils.PrintReplicationSlots(namespace, clusterName, env)
+		})
+}
+
+// AssertClusterReplicationSlots will verify if the replication slots of each pod
+// of the cluster exist and are aligned.
+func AssertClusterReplicationSlots(namespace, clusterName string) {
+	By("verifying all cluster's replication slots exist and are aligned", func() {
+		podList, err := env.GetClusterPodList(namespace, clusterName)
+		Expect(err).ToNot(HaveOccurred())
+		for _, pod := range podList.Items {
+			AssertReplicationSlotsOnPod(namespace, clusterName, pod)
+		}
+		AssertClusterReplicationSlotsAligned(namespace, clusterName)
+	})
+}
+
+// AssertClusterRollingRestart restart given cluster
+func AssertClusterRollingRestart(namespace, clusterName string) {
+	By(fmt.Sprintf("restarting cluster %v", clusterName), func() {
+		cluster, err := env.GetCluster(namespace, clusterName)
+		Expect(err).ToNot(HaveOccurred())
+		clusterRestarted := cluster.DeepCopy()
+		if clusterRestarted.Annotations == nil {
+			clusterRestarted.Annotations = make(map[string]string)
+		}
+		clusterRestarted.Annotations[specs.ClusterRestartAnnotationName] = time.Now().Format(time.RFC3339)
+		clusterRestarted.ManagedFields = nil
+		err = env.Client.Patch(env.Ctx, clusterRestarted, ctrlclient.MergeFrom(cluster))
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	By("waiting for the cluster to end up in upgrading state", func() {
+		// waiting for cluster phase to end up in "Upgrading cluster" state after restarting the cluster.
+		Eventually(func() (bool, error) {
+			cluster, err := env.GetCluster(namespace, clusterName)
+			return cluster.Status.Phase == apiv1.PhaseUpgrade, err
+		}, 120, 3).Should(BeTrue())
+	})
+	AssertClusterIsReady(namespace, clusterName, 300, env)
 }

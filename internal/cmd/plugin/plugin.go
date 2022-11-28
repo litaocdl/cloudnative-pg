@@ -31,6 +31,9 @@ var (
 	// Namespace to operate in
 	Namespace string
 
+	// NamespaceExplicitlyPassed indicates if the namespace was passed manually
+	NamespaceExplicitlyPassed bool
+
 	// Config is the Kubernetes configuration used
 	Config *rest.Config
 
@@ -38,9 +41,9 @@ var (
 	Client client.Client
 )
 
-// CreateKubernetesClient creates a k8s client to be used inside the kubectl-cnpg
+// SetupKubernetesClient creates a k8s client to be used inside the kubectl-cnpg
 // utility
-func CreateKubernetesClient(configFlags *genericclioptions.ConfigFlags) error {
+func SetupKubernetesClient(configFlags *genericclioptions.ConfigFlags) error {
 	var err error
 
 	kubeconfig := configFlags.ToRawKubeConfigLoader()
@@ -55,7 +58,7 @@ func CreateKubernetesClient(configFlags *genericclioptions.ConfigFlags) error {
 		return err
 	}
 
-	Namespace, _, err = kubeconfig.Namespace()
+	Namespace, NamespaceExplicitlyPassed, err = kubeconfig.Namespace()
 	if err != nil {
 		return err
 	}

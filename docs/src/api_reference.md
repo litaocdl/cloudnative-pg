@@ -69,6 +69,8 @@ Below you will find a description of the defined resources:
 - [PostgresConfiguration](#PostgresConfiguration)
 - [RecoveryTarget](#RecoveryTarget)
 - [ReplicaClusterConfiguration](#ReplicaClusterConfiguration)
+- [ReplicationSlotsConfiguration](#ReplicationSlotsConfiguration)
+- [ReplicationSlotsHAConfiguration](#ReplicationSlotsHAConfiguration)
 - [RollingUpdateStatus](#RollingUpdateStatus)
 - [S3Credentials](#S3Credentials)
 - [ScheduledBackup](#ScheduledBackup)
@@ -126,7 +128,7 @@ Backup is the Schema for the backups API
 
 Name     | Description                                                                                                                                                                                                                      | Type                                                                                                        
 -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------
-`metadata` |                                                                                                                                                                                                                                  | [metav1.ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#objectmeta-v1-meta)
+`metadata` |                                                                                                                                                                                                                                  | [metav1.ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#objectmeta-v1-meta)
 `spec    ` | Specification of the desired behavior of the backup. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status                                                              | [BackupSpec](#BackupSpec)                                                                                   
 `status  ` | Most recently observed status of the backup. This data may not be up to date. Populated by the system. Read-only. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status | [BackupStatus](#BackupStatus)                                                                               
 
@@ -149,7 +151,7 @@ BackupList contains a list of Backup
 
 Name     | Description                                                                                                                        | Type                                                                                                    
 -------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------
-`metadata` | Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#listmeta-v1-meta)
+`metadata` | Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#listmeta-v1-meta)
 `items   ` | List of backups                                                                                                                    - *mandatory*  | [[]Backup](#Backup)                                                                                     
 
 <a id='BackupSource'></a>
@@ -187,8 +189,8 @@ Name            | Description                                                   
 `encryption     ` | Encryption method required to S3 API                                                                                                                                    | string                                                                                           
 `backupId       ` | The ID of the Barman backup                                                                                                                                             | string                                                                                           
 `phase          ` | The last backup status                                                                                                                                                  | BackupPhase                                                                                      
-`startedAt      ` | When the backup was started                                                                                                                                             | [*metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#time-v1-meta)
-`stoppedAt      ` | When the backup was terminated                                                                                                                                          | [*metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#time-v1-meta)
+`startedAt      ` | When the backup was started                                                                                                                                             | [*metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#time-v1-meta)
+`stoppedAt      ` | When the backup was terminated                                                                                                                                          | [*metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#time-v1-meta)
 `beginWal       ` | The starting WAL                                                                                                                                                        | string                                                                                           
 `endWal         ` | The ending WAL                                                                                                                                                          | string                                                                                           
 `beginLSN       ` | The starting xlog                                                                                                                                                       | string                                                                                           
@@ -322,7 +324,7 @@ Cluster is the Schema for the PostgreSQL API
 
 Name     | Description                                                                                                                                                                                                                       | Type                                                                                                        
 -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------
-`metadata` |                                                                                                                                                                                                                                   | [metav1.ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#objectmeta-v1-meta)
+`metadata` |                                                                                                                                                                                                                                   | [metav1.ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#objectmeta-v1-meta)
 `spec    ` | Specification of the desired behavior of the cluster. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status                                                              | [ClusterSpec](#ClusterSpec)                                                                                 
 `status  ` | Most recently observed status of the cluster. This data may not be up to date. Populated by the system. Read-only. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status | [ClusterStatus](#ClusterStatus)                                                                             
 
@@ -334,7 +336,7 @@ ClusterList contains a list of Cluster
 
 Name     | Description                                                                                                                        | Type                                                                                                    
 -------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------
-`metadata` | Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#listmeta-v1-meta)
+`metadata` | Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#listmeta-v1-meta)
 `items   ` | List of clusters                                                                                                                   - *mandatory*  | [[]Cluster](#Cluster)                                                                                   
 
 <a id='ClusterSpec'></a>
@@ -355,6 +357,7 @@ Name                  | Description                                             
 `minSyncReplicas      ` | Minimum number of instances required in synchronous replication with the primary. Undefined or 0 allow writes to complete when no standby is available.                                                                                                                                                                                                                                                                 | int                                                                                                                             
 `maxSyncReplicas      ` | The target value for the synchronous replication quorum, that can be decreased if the number of ready standbys is lower than this. Undefined or 0 disable synchronous replication.                                                                                                                                                                                                                                      | int                                                                                                                             
 `postgresql           ` | Configuration of the PostgreSQL server                                                                                                                                                                                                                                                                                                                                                                                  | [PostgresConfiguration](#PostgresConfiguration)                                                                                 
+`replicationSlots     ` | Replication slots management configuration                                                                                                                                                                                                                                                                                                                                                                              | [*ReplicationSlotsConfiguration](#ReplicationSlotsConfiguration)                                                                
 `bootstrap            ` | Instructions to bootstrap this cluster                                                                                                                                                                                                                                                                                                                                                                                  | [*BootstrapConfiguration](#BootstrapConfiguration)                                                                              
 `replica              ` | Replica cluster configuration                                                                                                                                                                                                                                                                                                                                                                                           | [*ReplicaClusterConfiguration](#ReplicaClusterConfiguration)                                                                    
 `superuserSecret      ` | The secret containing the superuser password. If not defined a new secret will be created with a randomly generated password                                                                                                                                                                                                                                                                                            | [*LocalObjectReference](#LocalObjectReference)                                                                                  
@@ -367,7 +370,7 @@ Name                  | Description                                             
 `stopDelay            ` | The time in seconds that is allowed for a PostgreSQL instance to gracefully shutdown (default 30)                                                                                                                                                                                                                                                                                                                       | int32                                                                                                                           
 `switchoverDelay      ` | The time in seconds that is allowed for a primary PostgreSQL instance to gracefully shutdown during a switchover. Default value is 40000000, greater than one year in seconds, big enough to simulate an infinite delay                                                                                                                                                                                                 | int32                                                                                                                           
 `affinity             ` | Affinity/Anti-affinity rules for Pods                                                                                                                                                                                                                                                                                                                                                                                   | [AffinityConfiguration](#AffinityConfiguration)                                                                                 
-`resources            ` | Resources requirements of every generated Pod. Please refer to https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ for more information.                                                                                                                                                                                                                                                     | [corev1.ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#resourcerequirements-v1-core)
+`resources            ` | Resources requirements of every generated Pod. Please refer to https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/ for more information.                                                                                                                                                                                                                                                     | [corev1.ResourceRequirements](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#resourcerequirements-v1-core)
 `primaryUpdateStrategy` | Strategy to follow to upgrade the primary server during a rolling update procedure, after all replicas have been successfully updated: it can be automated (`unsupervised` - default) or manual (`supervised`)                                                                                                                                                                                                          | PrimaryUpdateStrategy                                                                                                           
 `primaryUpdateMethod  ` | Method to follow to upgrade the primary server during a rolling update procedure, after all replicas have been successfully updated: it can be with a switchover (`switchover` - default) or in-place (`restart`)                                                                                                                                                                                                       | PrimaryUpdateMethod                                                                                                             
 `backup               ` | The configuration to be used for backups                                                                                                                                                                                                                                                                                                                                                                                | [*BackupConfiguration](#BackupConfiguration)                                                                                    
@@ -416,6 +419,7 @@ Name                      | Description                                         
 `onlineUpdateEnabled      ` | OnlineUpdateEnabled shows if the online upgrade is enabled inside the cluster                                                                                                      | bool                                                       
 `azurePVCUpdateEnabled    ` | AzurePVCUpdateEnabled shows if the PVC online upgrade is enabled for this cluster                                                                                                  | bool                                                       
 `conditions               ` | Conditions for cluster object                                                                                                                                                      | []metav1.Condition                                         
+`instanceNames            ` | List of instance names in the cluster                                                                                                                                              | []string                                                   
 
 <a id='ConfigMapKeySelector'></a>
 
@@ -471,10 +475,10 @@ Name                 | Description                                              
 -------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------
 `name                ` | The server name, required                                                    - *mandatory*  | string                                                                                                                     
 `connectionParameters` | The list of connection parameters, such as dbname, host, username, etc       | map[string]string                                                                                                          
-`sslCert             ` | The reference to an SSL certificate to be used to connect to this instance   | [*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#secretkeyselector-v1-core)
-`sslKey              ` | The reference to an SSL private key to be used to connect to this instance   | [*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#secretkeyselector-v1-core)
-`sslRootCert         ` | The reference to an SSL CA public key to be used to connect to this instance | [*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#secretkeyselector-v1-core)
-`password            ` | The reference to the password to be used to connect to the server            | [*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#secretkeyselector-v1-core)
+`sslCert             ` | The reference to an SSL certificate to be used to connect to this instance   | [*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#secretkeyselector-v1-core)
+`sslKey              ` | The reference to an SSL private key to be used to connect to this instance   | [*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#secretkeyselector-v1-core)
+`sslRootCert         ` | The reference to an SSL CA public key to be used to connect to this instance | [*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#secretkeyselector-v1-core)
+`password            ` | The reference to the password to be used to connect to the server            | [*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#secretkeyselector-v1-core)
 `barmanObjectStore   ` | The configuration for the barman-cloud tool suite                            | [*BarmanObjectStoreConfiguration](#BarmanObjectStoreConfiguration)                                                         
 
 <a id='GoogleCredentials'></a>
@@ -555,7 +559,7 @@ Name            | Description                                                   
 --------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------
 `baseDN         ` | Root DN to begin the user search                               | string                                                                                                                     
 `bindDN         ` | DN of the user to bind to the directory                        | string                                                                                                                     
-`bindPassword   ` | Secret with the password for the user to bind to the directory | [*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#secretkeyselector-v1-core)
+`bindPassword   ` | Secret with the password for the user to bind to the directory | [*corev1.SecretKeySelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#secretkeyselector-v1-core)
 `searchAttribute` | Attribute to match against the username                        | string                                                                                                                     
 `searchFilter   ` | Search filter to use when doing the search+bind authentication | string                                                                                                                     
 
@@ -678,7 +682,7 @@ Pooler is the Schema for the poolers API
 
 Name     | Description            | Type                                                                                                        
 -------- | --- | ------------------------------------------------------------------------------------------------------------
-`metadata` |  | [metav1.ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#objectmeta-v1-meta)
+`metadata` |  | [metav1.ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#objectmeta-v1-meta)
 `spec    ` |  | [PoolerSpec](#PoolerSpec)                                                                                   
 `status  ` |  | [PoolerStatus](#PoolerStatus)                                                                               
 
@@ -700,7 +704,7 @@ PoolerList contains a list of Pooler
 
 Name     | Description            | Type                                                                                                    
 -------- | --- | --------------------------------------------------------------------------------------------------------
-`metadata` |  | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#listmeta-v1-meta)
+`metadata` |  | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#listmeta-v1-meta)
 `items   ` |  - *mandatory*  | [[]Pooler](#Pooler)                                                                                     
 
 <a id='PoolerSecrets'></a>
@@ -795,6 +799,28 @@ Name    | Description                                                           
 `enabled` | If replica mode is enabled, this cluster will be a replica of an existing cluster. Replica cluster can be created from a recovery object store or via streaming through pg_basebackup. Refer to the Replication page of the documentation for more information. - *mandatory*  | bool  
 `source ` | The name of the external cluster which is the replication origin                                                                                                                                                                                                - *mandatory*  | string
 
+<a id='ReplicationSlotsConfiguration'></a>
+
+## ReplicationSlotsConfiguration
+
+ReplicationSlotsConfiguration encapsulates the configuration of replication slots
+
+Name             | Description                                                                                                | Type                                                                
+---------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------
+`highAvailability` | Replication slots for high availability configuration                                                      | [*ReplicationSlotsHAConfiguration](#ReplicationSlotsHAConfiguration)
+`updateInterval  ` | Standby will update the status of the local replication slots every `updateInterval` seconds (default 30). | int                                                                 
+
+<a id='ReplicationSlotsHAConfiguration'></a>
+
+## ReplicationSlotsHAConfiguration
+
+ReplicationSlotsHAConfiguration encapsulates the configuration of the replication slots that are automatically managed by the operator to control the streaming replication connections with the standby instances for high availability (HA) purposes. Replication slots are a PostgreSQL feature that makes sure that PostgreSQL automatically keeps WAL files in the primary when a streaming client (in this specific case a replica that is part of the HA cluster) gets disconnected.
+
+Name       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Type  
+---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------
+`enabled   ` | If enabled, the operator will automatically manage replication slots on the primary instance and use them in streaming replication connections with all the standby instances that are part of the HA cluster. If disabled (default), the operator will not take advantage of replication slots in streaming connections with the replicas. This feature also controls replication slots in replica cluster, from the designated primary to its cascading replicas. This can only be set at creation time. - *mandatory*  | bool  
+`slotPrefix` | Prefix for replication slots managed by the operator for HA. It may only contain lower case letters, numbers, and the underscore character. This can only be set at creation time. By default set to `_cnpg_`.                                                                                                                                                                                                                                                                                             | string
+
 <a id='RollingUpdateStatus'></a>
 
 ## RollingUpdateStatus
@@ -804,7 +830,7 @@ RollingUpdateStatus contains the information about an instance which is being up
 Name      | Description                         | Type                                                                                            
 --------- | ----------------------------------- | ------------------------------------------------------------------------------------------------
 `imageName` | The image which we put into the Pod - *mandatory*  | string                                                                                          
-`startedAt` | When the update has been started    | [metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#time-v1-meta)
+`startedAt` | When the update has been started    | [metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#time-v1-meta)
 
 <a id='S3Credentials'></a>
 
@@ -832,7 +858,7 @@ ScheduledBackup is the Schema for the scheduledbackups API
 
 Name     | Description                                                                                                                                                                                                                               | Type                                                                                                        
 -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------
-`metadata` |                                                                                                                                                                                                                                           | [metav1.ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#objectmeta-v1-meta)
+`metadata` |                                                                                                                                                                                                                                           | [metav1.ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#objectmeta-v1-meta)
 `spec    ` | Specification of the desired behavior of the ScheduledBackup. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status                                                              | [ScheduledBackupSpec](#ScheduledBackupSpec)                                                                 
 `status  ` | Most recently observed status of the ScheduledBackup. This data may not be up to date. Populated by the system. Read-only. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status | [ScheduledBackupStatus](#ScheduledBackupStatus)                                                             
 
@@ -844,7 +870,7 @@ ScheduledBackupList contains a list of ScheduledBackup
 
 Name     | Description                                                                                                                        | Type                                                                                                    
 -------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------
-`metadata` | Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#listmeta-v1-meta)
+`metadata` | Standard list metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds | [metav1.ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#listmeta-v1-meta)
 `items   ` | List of clusters                                                                                                                   - *mandatory*  | [[]ScheduledBackup](#ScheduledBackup)                                                                   
 
 <a id='ScheduledBackupSpec'></a>
@@ -857,7 +883,7 @@ Name                 | Description                                              
 -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------
 `suspend             ` | If this backup is suspended or not                                                                                                                                                                                                                                                                                                   | *bool                                        
 `immediate           ` | If the first backup has to be immediately start after creation or not                                                                                                                                                                                                                                                                | *bool                                        
-`schedule            ` | The schedule follows the same format used in Kubernetes CronJobs, see https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format                                                                                                                                                                                           - *mandatory*  | string                                       
+`schedule            ` | The schedule does not follow the same format used in Kubernetes CronJobs as it includes an additional seconds specifier, see https://pkg.go.dev/github.com/robfig/cron#hdr-CRON_Expression_Format                                                                                                                                    - *mandatory*  | string                                       
 `cluster             ` | The cluster to backup                                                                                                                                                                                                                                                                                                                | [LocalObjectReference](#LocalObjectReference)
 `backupOwnerReference` | Indicates which ownerReference should be put inside the created backup resources.<br /> - none: no owner reference for created backup objects (same behavior as before the field was introduced)<br /> - self: sets the Scheduled backup object as owner of the backup<br /> - cluster: set the cluster as owner of the backup<br /> | string                                       
 
@@ -869,9 +895,9 @@ ScheduledBackupStatus defines the observed state of ScheduledBackup
 
 Name             | Description                                                                | Type                                                                                             
 ---------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------
-`lastCheckTime   ` | The latest time the schedule                                               | [*metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#time-v1-meta)
-`lastScheduleTime` | Information when was the last time that backup was successfully scheduled. | [*metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#time-v1-meta)
-`nextScheduleTime` | Next time we will run a backup                                             | [*metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#time-v1-meta)
+`lastCheckTime   ` | The latest time the schedule                                               | [*metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#time-v1-meta)
+`lastScheduleTime` | Information when was the last time that backup was successfully scheduled. | [*metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#time-v1-meta)
+`nextScheduleTime` | Next time we will run a backup                                             | [*metav1.Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#time-v1-meta)
 
 <a id='SecretKeySelector'></a>
 
@@ -921,9 +947,9 @@ StorageConfiguration is the configuration of the storage of the PostgreSQL insta
 Name               | Description                                                                                                                                                                                | Type                                                                                                                                   
 ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------
 `storageClass      ` | StorageClass to use for database data (`PGDATA`). Applied after evaluating the PVC template, if available. If not specified, generated PVCs will be satisfied by the default storage class | *string                                                                                                                                
-`size              ` | Size of the storage. Required if not already specified in the PVC template. Changes to this field are automatically reapplied to the created PVCs. Size cannot be decreased.               - *mandatory*  | string                                                                                                                                 
+`size              ` | Size of the storage. Required if not already specified in the PVC template. Changes to this field are automatically reapplied to the created PVCs. Size cannot be decreased.               | string                                                                                                                                 
 `resizeInUseVolumes` | Resize existent PVCs, defaults to true                                                                                                                                                     | *bool                                                                                                                                  
-`pvcTemplate       ` | Template to be used to generate the Persistent Volume Claim                                                                                                                                | [*corev1.PersistentVolumeClaimSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.21/#persistentvolumeclaim-v1-core)
+`pvcTemplate       ` | Template to be used to generate the Persistent Volume Claim                                                                                                                                | [*corev1.PersistentVolumeClaimSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.25/#persistentvolumeclaim-v1-core)
 
 <a id='SyncReplicaElectionConstraints'></a>
 
@@ -937,7 +963,7 @@ In future synchronous replica election restriction by name will be supported.
 
 Name                   | Description                                                                                                    | Type    
 ---------------------- | -------------------------------------------------------------------------------------------------------------- | --------
-`enabled               ` | This flag enabled the constraints for sync replicas                                                            - *mandatory*  | bool    
+`enabled               ` | This flag enables the constraints for sync replicas                                                            - *mandatory*  | bool    
 `nodeLabelsAntiAffinity` | A list of node labels values to extract and compare to evaluate if the pods reside in the same topology or not | []string
 
 <a id='Topology'></a>

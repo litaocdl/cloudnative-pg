@@ -21,10 +21,20 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
+
+	"github.com/cloudnative-pg/cloudnative-pg/pkg/utils"
 )
 
 // CurlClient returns the Pod definition for a curl client
 func CurlClient(namespace string) corev1.Pod {
+	seccompProfile := &corev1.SeccompProfile{
+		Type: corev1.SeccompProfileTypeRuntimeDefault,
+	}
+	if !utils.HaveSeccompSupport() {
+		seccompProfile = nil
+	}
+
 	curlPod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
@@ -37,10 +47,17 @@ func CurlClient(namespace string) corev1.Pod {
 					Name:    "curl",
 					Image:   "curlimages/curl:7.82.0",
 					Command: []string{"sleep", "3600"},
+					SecurityContext: &corev1.SecurityContext{
+						AllowPrivilegeEscalation: pointer.Bool(false),
+						SeccompProfile:           seccompProfile,
+					},
 				},
 			},
 			DNSPolicy:     corev1.DNSClusterFirst,
 			RestartPolicy: corev1.RestartPolicyAlways,
+			SecurityContext: &corev1.PodSecurityContext{
+				SeccompProfile: seccompProfile,
+			},
 		},
 	}
 	return curlPod
