@@ -35,6 +35,7 @@ const (
 	Medium
 	Low
 	Lowest
+	Bottom
 )
 
 // testDepthEnvVarName is the environment variable we expect the user to set
