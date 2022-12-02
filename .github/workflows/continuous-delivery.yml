@@ -61,7 +61,7 @@ jobs:
       - name: Check for Command
         id: command
         uses: xt0rted/slash-command-action@v2
-        continue-on-error: true
+        continue-on-error: false
         with:
           command: test
           reaction: "true"
@@ -150,7 +150,7 @@ jobs:
       - test_arguments
     runs-on: ubuntu-20.04
     if: |
-      always() && !cancelled()
+      success() && !cancelled()
     outputs:
       git_ref: ${{ env.GITHUB_REF }}
       depth: ${{ env.DEPTH }}
