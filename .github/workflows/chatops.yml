@@ -20,7 +20,7 @@ jobs:
         id: command
         uses: xt0rted/slash-command-action@v2
         with:
-          command: test
+          command: ok-to-merge
           reaction: "true"
           reaction-type: "eyes"
           allow-edits: "false"
