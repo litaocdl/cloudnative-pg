@@ -45,7 +45,7 @@ const (
 	LabelServiceConnectivity = "service-connectivity"
 
 	// LabelSelfHealing is a label for selecting self-healing test
-	LabelSelfHealing = "self-healing"
+	LabelSelfHealing = "self-healing1"
 
 	// LabelBackupRestore is a label for only selecting backup and restore tests
 	LabelBackupRestore = "backup-restore"
