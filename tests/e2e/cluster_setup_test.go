@@ -173,7 +173,7 @@ var _ = Describe("Cluster setup", Label(tests.LabelSmoke, tests.LabelBasic), fun
 		})
 
 		By("verifying cluster reaches ready condition after additional waiting", func() {
-			AssertClusterReadinessStatusIsReached(namespace, clusterName, apiv1.ConditionTrue, 180, env)
+			AssertClusterReadinessStatusIsReached(namespace, clusterName, apiv1.ConditionTrue, 200, env)
 		})
 	})
 })
