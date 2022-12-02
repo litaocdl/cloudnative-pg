@@ -61,7 +61,7 @@ jobs:
       - name: Check for Command
         id: command
         uses: xt0rted/slash-command-action@v2
-        continue-on-error: true
+        continue-on-error: false
         with:
           command: test
           reaction: "true"
@@ -71,7 +71,6 @@ jobs:
 
       - name: Process arguments
         id: args
-        if: success()
         run: |
           ARGS="${{ steps.command.outputs.command-arguments }}"
           # Set the defaults
