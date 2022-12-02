@@ -185,7 +185,8 @@ jobs:
       - test_arguments
       - evaluate_options
     if: |
-      always() && !cancelled()
+      always() && !cancelled() &&
+      needs.evaluate_options.result == 'success'
     runs-on: ubuntu-20.04
     permissions:
       contents: read
