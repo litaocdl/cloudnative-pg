@@ -61,7 +61,7 @@ jobs:
       - name: Check for Command
         id: command
         uses: xt0rted/slash-command-action@v2
-        continue-on-error: false
+        continue-on-error: true
         with:
           command: test
           reaction: "true"
