@@ -23,7 +23,7 @@ jobs:
           require: 'write'
       - name: Add "ok to merge :ok_hand:" label to CNPG PR
         uses: actions-ecosystem/action-add-labels@v1.1.3
-        if: steps.checkUser.outputs.check-result == 'true'
+        if: steps.checkUser.outputs.require-result == 'true'
         with:
           github_token: ${{ secrets.REPO_GHA_PAT }}
           labels: "ok to merge :ok_hand:"
