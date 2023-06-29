@@ -19,8 +19,7 @@ jobs:
     if: | 
         github.event.pull_request.merged == false &&
         !contains(github.event.pull_request.labels.*.name, 'backport-requested') &&
-        !contains(github.event.pull_request.labels.*.name, 'backport-requested :arrow_backward:') && 
-        !contains(github.event.pull_request.labels.*.name, 'do not backport')
+        !contains(github.event.pull_request.labels.*.name, 'backport-requested :arrow_backward:')
     runs-on: ubuntu-22.04
     steps:
       -
