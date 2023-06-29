@@ -35,7 +35,7 @@ DIST_PATH := $(shell pwd)/dist
 OPERATOR_MANIFEST_PATH := ${DIST_PATH}/operator-manifest.yaml
 LOCALBIN ?= $(shell pwd)/bin
 
-BUILD_IMAGE ?= true
+BUILD_IMAGE ?= false
 POSTGRES_IMAGE_NAME ?= $(shell grep 'DefaultImageName.*=' "pkg/versions/versions.go" | cut -f 2 -d \")
 KUSTOMIZE_VERSION ?= v5.1.0
 KIND_CLUSTER_NAME ?= pg
