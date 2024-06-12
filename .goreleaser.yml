@@ -30,7 +30,6 @@ builds:
     - linux
   goarch:
     - amd64
-    - arm64
 
 - id: kubectl-cnpg
   binary: kubectl-cnpg
