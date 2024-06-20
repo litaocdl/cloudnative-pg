@@ -25,6 +25,7 @@ tests/e2e/out/
 
 # goreleaser
 /dist/
+a
 
 # Spellcheck dictionary
 dictionary.dic
