@@ -24,7 +24,7 @@ LABEL summary="$SUMMARY" \
       version="$VERSION" \
       release="1"
 
-WORKDIR /
+WORKDIR /1
 
 USER nonroot:nonroot
 
